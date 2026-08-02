@@ -1,0 +1,39 @@
+<resources>
+    <string name="app_name">ScreenAssistant</string>
+    <string name="accessibility_description">Permite a la asistente entender el contexto de tu pantalla para ayudarte mejor.</string>
+    <string name="start_assistant">Iniciar Asistente Flotante</string>
+    <string name="stop_assistant">Detener Asistente Flotante</string>
+    <string name="enable_accessibility">Activar Contexto de Pantalla (Accesibilidad)</string>
+    <string name="setup_title">Configuración de Screen Assistant</string>
+    <string name="message_hint">Escribe un mensaje...</string>
+    <string name="voice_hint">Habla...</string>
+    <string name="send">Enviar</string>
+    <string name="analyzing">Analizando...</string>
+    <string name="error_connection">No pude procesar eso. Revisa tu conexión.</string>
+    <string name="error_processing">Error al procesar</string>
+    <string name="notification_title">Asistente Activo</string>
+    <string name="notification_text">La asistente está flotando sobre otras apps.</string>
+    <string name="assistant_character_description">Personaje Asistente</string>
+    <string name="voice_input">Entrada de voz</string>
+    <string name="stop_voice">Detener voz</string>
+    <string name="change_outfit">Cambiar atuendo</string>
+    <string name="user_avatar">Usuario</string>
+    <string name="assistant_avatar">Asistente</string>
+
+    <!-- API Key -->
+    <string name="api_key_title">API Key (Gemini)</string>
+    <string name="api_key_configured">Configurada: %1$s</string>
+    <string name="api_key_not_configured">No configurada</string>
+    <string name="api_key_degraded_banner">Funcionando sin clave configurada</string>
+    <string name="api_key_field_label">Clave de IA</string>
+    <string name="api_key_show_key">Mostrar clave</string>
+    <string name="api_key_hide_key">Ocultar clave</string>
+    <string name="api_key_save">Guardar</string>
+    <string name="api_key_remove">Quitar</string>
+    <string name="api_key_remove_dialog_title">¿Quitar la API key?</string>
+    <string name="api_key_remove_dialog_message">Se eliminará la clave guardada y la asistente quedará sin IA configurada.</string>
+    <string name="api_key_remove_dialog_confirm">Sí, quitar</string>
+    <string name="api_key_remove_dialog_cancel">Cancelar</string>
+    <string name="api_key_error_empty">La clave no puede estar vacía.</string>
+    <string name="api_key_error_invalid">La clave no puede contener espacios.</string>
+</resources>
