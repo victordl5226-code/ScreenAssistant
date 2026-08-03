@@ -2,6 +2,8 @@ package com.screenassistant.service.system.bridge
 
 import android.content.Context
 import android.content.Intent
+import com.screenassistant.core.data.util.PuenteConfig
+import com.screenassistant.core.data.util.PuenteConfigStore
 import com.screenassistant.core.domain.service.TextToSpeech
 import io.mockk.EqMatcher
 import io.mockk.every
@@ -17,20 +19,22 @@ import org.junit.Before
 import org.junit.Test
 
 /**
- * TaskerResponseEmitterImpl (P3, ADR-014/T4): broadcast SIEMPRE (canal máquina)
- * con el JSON de 6 claves + id plano; TTS solo si hablar. Patrón de MockK de
+ * TaskerResponseEmitterImpl (P3, ADR-014/T4; F2, ADR-015): broadcast SIEMPRE
+ * (canal máquina) con el JSON de 6 claves + id plano; TTS solo si hablar; y
+ * setPackage (privacidad F2) desde la config compartida. Patrón de MockK de
  * CallActionTest:64 — mockkConstructor(Intent) con prototipo constructedWith +
  * slot capture del Intent entregado a sendBroadcast.
  *
- * Cierre QA/Supervisor (punto 5): la captura del slot NO es decorativa — el stub
- * de putExtra registra los extras REALES escritos por producción en un mapa y los
- * getters del mock los devuelven fielmente, así que las aserciones leen del Intent
- * enviado (acción + extras) el valor real del flujo, sin verificación circular.
+ * QA #3: el stub de `cargar()` devuelve la config MATERIALIZADA
+ * (packageRespuesta = PACKAGE_RESPUESTA_DEFAULT por defecto — H1: el store ya
+ * materializa antes; los casos null/blank son input DEFENSIVO DIRECTO al emitter,
+ * no alcanzable en producción) y el stub de setPackage captura el valor real.
  */
 class TaskerResponseEmitterTest {
 
     private lateinit var context: Context
     private lateinit var tts: TextToSpeech
+    private lateinit var configStore: PuenteConfigStore
     private lateinit var emitter: TaskerResponseEmitter
 
     private val intentSlot = slot<Intent>()
@@ -40,11 +44,17 @@ class TaskerResponseEmitterTest {
     /** Extras REALES escritos por producción en el Intent (registrados por el stub). */
     private val extrasEnviados = mutableMapOf<String, String>()
 
+    /** package capturado de setPackage (null si no se llamó — F2). */
+    private var packageAplicado: String? = null
+
     @Before
     fun setup() {
         context = mockk(relaxed = true)
         tts = mockk()
         every { tts.speak(any()) } returns Unit
+        configStore = mockk()
+        every { configStore.cargar() } returns
+            PuenteConfig(packageRespuesta = PuenteConfig.PACKAGE_RESPUESTA_DEFAULT)
 
         mockkConstructor(Intent::class)
         // Prototipo del constructor registrado ANTES de la producción (B2),
@@ -68,8 +78,16 @@ class TaskerResponseEmitterTest {
             constructedWith<Intent>(EqMatcher(TaskerBridgeContract.ACTION_RESPUESTA))
                 .action
         } returns TaskerBridgeContract.ACTION_RESPUESTA
+        // F2: captura real de setPackage (patrón QA #3 — slot de respuesta).
+        every {
+            constructedWith<Intent>(EqMatcher(TaskerBridgeContract.ACTION_RESPUESTA))
+                .setPackage(any())
+        } answers {
+            packageAplicado = firstArg<String>()
+            mockk()
+        }
 
-        emitter = TaskerResponseEmitterImpl(context, tts)
+        emitter = TaskerResponseEmitterImpl(context, tts, configStore)
     }
 
     @After
@@ -135,5 +153,39 @@ class TaskerResponseEmitterTest {
 
         verify(exactly = 0) { tts.speak(any()) }
         verify { context.sendBroadcast(any()) }
+    }
+
+    // ===== F2: setPackage desde la config compartida (ADR-015, QA #3) =====
+
+    @Test
+    fun `packageRespuesta configurado aplica setPackage al intent`() {
+        every { configStore.cargar() } returns PuenteConfig(packageRespuesta = "com.otro.paquete")
+
+        emitter.emitir(respuestaOk, hablar = false)
+
+        assertEquals("com.otro.paquete", packageAplicado)
+        verify { context.sendBroadcast(any()) }
+    }
+
+    @Test
+    fun `packageRespuesta null no aplica setPackage`() {
+        // Input DEFENSIVO DIRECTO (H1): en producción el store materializa antes;
+        // el null solo llega si un test/config lo inyecta.
+        every { configStore.cargar() } returns PuenteConfig(packageRespuesta = null)
+
+        emitter.emitir(respuestaOk, hablar = false)
+
+        assertNull("setPackage no debe llamarse con null", packageAplicado)
+    }
+
+    @Test
+    fun `packageRespuesta blank no aplica setPackage`() {
+        // Mismo input defensivo: blank → sin setPackage (canal global solo por
+        // inyección directa; el modo global NO es alcanzable desde la UI, H1).
+        every { configStore.cargar() } returns PuenteConfig(packageRespuesta = "   ")
+
+        emitter.emitir(respuestaOk, hablar = false)
+
+        assertNull("setPackage no debe llamarse con blank", packageAplicado)
     }
 }

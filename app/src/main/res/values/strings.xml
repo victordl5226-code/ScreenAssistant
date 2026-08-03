@@ -36,4 +36,28 @@
     <string name="api_key_remove_dialog_cancel">Cancelar</string>
     <string name="api_key_error_empty">La clave no puede estar vacía.</string>
     <string name="api_key_error_invalid">La clave no puede contener espacios.</string>
+
+    <!-- Puente Tasker (Lote 7 / ADR-015 v1.2): token F1, privacidad F2, URL AutoRemote F3 -->
+    <string name="puente_title">Puente Tasker (configuración)</string>
+    <string name="puente_degraded_banner">Almacenamiento seguro no disponible: la configuración se guarda sin cifrar.</string>
+    <string name="puente_token_label">Token compartido (opcional)</string>
+    <string name="puente_token_show">Mostrar token</string>
+    <string name="puente_token_hide">Ocultar token</string>
+    <string name="puente_token_notice">Inclúyelo como extra `token` en cada comando de Tasker (Send Intent), AutoRemote o adb; viaja en claro en el broadcast; vacío = canal abierto (sin protección); no se guarda en logs.</string>
+    <string name="puente_package_respuesta_label">Paquete del receptor de la respuesta</string>
+    <string name="puente_package_respuesta_placeholder">net.dinglisch.android.taskerm</string>
+    <string name="puente_privacy_notice">El extra respuesta puede contener texto de tus notas. Vacío = net.dinglisch.android.taskerm.</string>
+    <string name="puente_url_switch">Responder por URL (AutoRemote)</string>
+    <string name="puente_url_notice">Desactivado por defecto. Envía la respuesta al endpoint de AutoRemote cuando el flag está activo y hay key; requiere INTERNET; canal adicional al broadcast.</string>
+    <string name="puente_key_label">Key de AutoRemote</string>
+    <string name="puente_key_show">Mostrar key</string>
+    <string name="puente_key_hide">Ocultar key</string>
+    <string name="puente_save">Guardar</string>
+    <string name="puente_clear_key">Borrar key</string>
+    <string name="puente_key_clear_dialog_title">¿Borrar la key de AutoRemote?</string>
+    <string name="puente_key_clear_dialog_message">Se eliminará la key guardada y el canal URL de respuesta quedará inactivo hasta que guardes una nueva.</string>
+    <string name="puente_key_clear_dialog_confirm">Sí, borrar</string>
+    <string name="puente_key_clear_dialog_cancel">Cancelar</string>
+    <string name="puente_channel_open">Canal abierto (sin token)</string>
+    <string name="puente_channel_protected">Protegido</string>
 </resources>

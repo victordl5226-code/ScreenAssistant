@@ -170,4 +170,34 @@ class TaskerPayloadExtractorTest {
         assertNull(TaskerPayloadExtractor.idDe(""))
         assertNull(TaskerPayloadExtractor.idDe("  "))
     }
+
+    // ===== v1.2 (F1): token del transporte (default null — los 19 tests
+    // anteriores compilan sin cambios, ADR-015 §2.2) =====
+
+    @Test
+    fun `token passthrough al payload`() {
+        val payload = TaskerPayloadExtractor.extraer(message = wire, cmd = null, token = "misecreto")
+        assertEquals(wire, payload.texto)
+        assertFalse(payload.silencioso)
+        assertEquals("misecreto", payload.token)
+    }
+
+    @Test
+    fun `message cmd y token presentes extraen los tres`() {
+        val payload = TaskerPayloadExtractor.extraer(
+            message = wire,
+            cmd = "cmd-viejo",
+            token = "t-extra",
+        )
+        assertEquals(wire, payload.texto) // message gana a cmd (D3, intacto)
+        assertEquals("t-extra", payload.token)
+    }
+
+    @Test
+    fun `token con message vacio presente se extrae igual`() {
+        // Un message vacío es un COMANDO vacío (D3) y el token viaja igual.
+        val payload = TaskerPayloadExtractor.extraer(message = "", cmd = wire, token = "t")
+        assertEquals("", payload.texto)
+        assertEquals("t", payload.token)
+    }
 }

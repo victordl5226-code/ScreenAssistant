@@ -9,6 +9,7 @@ import com.screenassistant.core.data.local.MemoryDao
 import com.screenassistant.core.data.local.MessageDao
 import com.screenassistant.core.data.local.MessageQueueManager
 import com.screenassistant.core.data.util.ApiKeyProvider
+import com.screenassistant.core.data.util.PuenteConfigStore
 import com.screenassistant.core.domain.action.SystemAction
 import com.screenassistant.core.domain.bridge.CommandBridge
 import com.screenassistant.core.domain.bridge.SystemCommandJsonCodec
@@ -34,11 +35,14 @@ import com.screenassistant.service.system.action.LanguageAction
 import com.screenassistant.service.system.action.MapsAction
 import com.screenassistant.service.system.action.MemoryAction
 import com.screenassistant.service.system.action.NoteAction
+import com.screenassistant.service.system.bridge.AutoRemoteUrlCallback
+import com.screenassistant.service.system.bridge.HttpUrlSender
 import com.screenassistant.service.system.bridge.SystemCommandBridgeImpl
 import com.screenassistant.service.system.bridge.TaskerMessageHandler
 import com.screenassistant.service.system.bridge.TaskerMessageHandlerImpl
 import com.screenassistant.service.system.bridge.TaskerResponseEmitter
 import com.screenassistant.service.system.bridge.TaskerResponseEmitterImpl
+import com.screenassistant.service.system.bridge.UrlSender
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -125,13 +129,21 @@ object AppModule {
         return TextToSpeechManager(context)
     }
 
+    // === Puente Tasker — Fase 3A (Lote 7 / ADR-015 v1.2): token F1, privacidad F2, URL F3 ===
+    // 4 providers (O2): el STORE no lleva @Provides — creación ÚNICA vía
+    // @Inject constructor + @Singleton (precedente TaskerMessageHandlerImpl).
+    // ApiKeyProvider conserva su @Provides por la carga inicial con BuildConfig
+    // (caso distinto, no replicado). ELIMINADO en v1.2: provideTaskerOrigenVerifier
+    // (muerto con el veto B1/H1, ADR-015 §2.6).
+
     @Provides
     @Singleton
     fun provideTaskerMessageHandler(
         bridge: CommandBridge,
         codec: SystemCommandJsonCodec,
+        configStore: PuenteConfigStore,
     ): TaskerMessageHandler {
-        return TaskerMessageHandlerImpl(bridge, codec)
+        return TaskerMessageHandlerImpl(bridge, codec, configStore)
     }
 
     // Sin @Inject constructor (precedente AlarmAction): se provee aquí con
@@ -141,8 +153,25 @@ object AppModule {
     fun provideTaskerResponseEmitter(
         @ApplicationContext context: Context,
         tts: TextToSpeech,
+        configStore: PuenteConfigStore,
     ): TaskerResponseEmitter {
-        return TaskerResponseEmitterImpl(context, tts)
+        return TaskerResponseEmitterImpl(context, tts, configStore)
+    }
+
+    @Provides
+    @Singleton
+    fun provideUrlSender(): UrlSender {
+        return HttpUrlSender()
+    }
+
+    @Provides
+    @Singleton
+    fun provideAutoRemoteUrlCallback(
+        configStore: PuenteConfigStore,
+        urlSender: UrlSender,
+        @IoDispatcher io: CoroutineDispatcher,
+    ): AutoRemoteUrlCallback {
+        return AutoRemoteUrlCallback(configStore, urlSender, io)
     }
 
     @Provides

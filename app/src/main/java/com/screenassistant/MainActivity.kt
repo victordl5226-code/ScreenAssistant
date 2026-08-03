@@ -17,7 +17,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -40,6 +42,9 @@ import com.screenassistant.service.system.ScreenContextService
 import com.screenassistant.ui.apikey.ApiKeySection
 import com.screenassistant.ui.apikey.ApiKeyViewModel
 import com.screenassistant.ui.apikey.UiState
+import com.screenassistant.ui.puente.PuenteSettingsSection
+import com.screenassistant.ui.puente.PuenteSettingsViewModel
+import com.screenassistant.ui.puente.PuenteUiState
 import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
@@ -51,6 +56,9 @@ class MainActivity : ComponentActivity() {
             ScreenAssistantTheme {
                 val apiKeyViewModel: ApiKeyViewModel = hiltViewModel()
                 val apiKeyUiState by apiKeyViewModel.uiState.collectAsState()
+
+                val puenteViewModel: PuenteSettingsViewModel = hiltViewModel()
+                val puenteUiState by puenteViewModel.uiState.collectAsState()
 
                 val micPermissionLauncher = rememberLauncherForActivityResult(
                     ActivityResultContracts.RequestPermission()
@@ -93,7 +101,14 @@ class MainActivity : ComponentActivity() {
                         apiKeyUiState = apiKeyUiState,
                         onApiKeyInputChange = apiKeyViewModel::onInputChange,
                         onApiKeySave = apiKeyViewModel::saveKey,
-                        onApiKeyClear = apiKeyViewModel::clearKey
+                        onApiKeyClear = apiKeyViewModel::clearKey,
+                        puenteUiState = puenteUiState,
+                        onPuenteTokenChange = puenteViewModel::onTokenChange,
+                        onPuenteUrlFlagChange = puenteViewModel::onUrlFlagChange,
+                        onPuentePackageRespuestaChange = puenteViewModel::onPackageRespuestaChange,
+                        onPuenteAutoRemoteKeyChange = puenteViewModel::onAutoRemoteKeyChange,
+                        onPuenteSave = puenteViewModel::save,
+                        onPuenteClearKey = puenteViewModel::clearKey
                     )
                 }
             }
@@ -149,7 +164,14 @@ fun MainScreen(
     apiKeyUiState: UiState,
     onApiKeyInputChange: (String) -> Unit,
     onApiKeySave: (String) -> Unit,
-    onApiKeyClear: () -> Unit
+    onApiKeyClear: () -> Unit,
+    puenteUiState: PuenteUiState,
+    onPuenteTokenChange: (String) -> Unit,
+    onPuenteUrlFlagChange: (Boolean) -> Unit,
+    onPuentePackageRespuestaChange: (String) -> Unit,
+    onPuenteAutoRemoteKeyChange: (String) -> Unit,
+    onPuenteSave: () -> Unit,
+    onPuenteClearKey: () -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     var isAccessibilityEnabled by remember {
@@ -162,8 +184,12 @@ fun MainScreen(
         onPauseOrDispose { }
     }
 
+    // M1 (ADR-015): las Cards apiladas quedan cortas en pantallas pequeñas →
+    // el Column de MainScreen gana verticalScroll.
     Column(
-        modifier = modifier.fillMaxSize(),
+        modifier = modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
@@ -195,6 +221,21 @@ fun MainScreen(
             onInputChange = onApiKeyInputChange,
             onSaveKey = onApiKeySave,
             onClearKey = onApiKeyClear,
+            modifier = Modifier.padding(horizontal = 16.dp)
+        )
+
+        Spacer(modifier = Modifier.height(32.dp))
+
+        // Configuración del puente Tasker (Lote 7 / ADR-015 v1.2): token
+        // compartido F1, privacidad de respuesta F2 y URL callback F3 (flag + key).
+        PuenteSettingsSection(
+            uiState = puenteUiState,
+            onTokenChange = onPuenteTokenChange,
+            onUrlFlagChange = onPuenteUrlFlagChange,
+            onPackageRespuestaChange = onPuentePackageRespuestaChange,
+            onAutoRemoteKeyChange = onPuenteAutoRemoteKeyChange,
+            onSave = onPuenteSave,
+            onClearKey = onPuenteClearKey,
             modifier = Modifier.padding(horizontal = 16.dp)
         )
 

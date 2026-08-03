@@ -2,18 +2,16 @@ package com.screenassistant.service.system.bridge
 
 /**
  * Recibe el wire ya extraído (no-null) y devuelve SIEMPRE el JSON de 6 claves
- * (contrato H4 de ADR-013), incluido el timeout. Nunca excepciones hacia el emisor.
+ * (contrato H4 de ADR-013), incluido el timeout y el rechazo de token.
+ * Nunca excepciones hacia el emisor.
  *
- * `origen` viaja best-effort (el receiver pasa `intent.getPackage()`) como seam
- * preparado para la allowlist de Fase 3 (D5). HONESTIDAD (cierre QA/Supervisor):
- * con la configuración SOPORTADA (Send Intent con el campo Package, broadcast
- * package-specific) `getPackage()` devuelve el TARGET — nuestra app —, NO el emisor
- * real; sin Package el broadcast no llega al receiver estático en API 26+. La
- * allowlist de Fase 3 deberá evaluar `PendingResult.getSentUid()`/`getSentPackage()`
- * (API 28+, guard minSdk 26), validado en dispositivo (ADR-014/T5). NO se valida en
- * v1 (QA #5 ACEPTADO). No colisiona con el campo `contexto` del wire (D6): es
- * vocabulario del transporte, no del protocolo.
+ * v1.2 (F1, rediseño tras veto B1/H1): `token` = extra del transporte con el
+ * secreto compartido (ADR-015 §2.2). La identidad del emisor
+ * (getSentFromUid/getSentFromPackage) NO es obtenible sin opt-in del emisor
+ * (H1, ADR-015 §0.2) → la autenticación usa material que el emisor SÍ controla:
+ * el extra token del propio Intent. El seam vuelve al espíritu de ADR-014/T6
+ * (un solo parámetro de comando + material de transporte por parámetro).
  */
 interface TaskerMessageHandler {
-    suspend fun handle(extra: String, origen: String?): String
+    suspend fun handle(extra: String, token: String?): String
 }

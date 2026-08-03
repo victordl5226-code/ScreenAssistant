@@ -5,7 +5,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
 /**
- * Payload extraído de los extras del Intent de entrada (D3, ADR-014/T3).
+ * Payload extraído de los extras del Intent de entrada (D3, ADR-014/T3; F1 v1.2).
  *
  * `texto == null` → SILENCIO deliberado: el receiver hace return sin respuesta
  * (un broadcast sin extras no es un comando; H3: el invariante "el emisor nunca
@@ -14,6 +14,9 @@ import kotlinx.serialization.json.JsonPrimitive
 data class PayloadTasker(
     val texto: String?,
     val silencioso: Boolean,
+    /** v1.2 (F1): extra de autenticación de canal (`intent.getStringExtra("token")`);
+     *  null si el emisor no lo mandó. NO es campo del contrato JSON (ADR-015 §2.1). */
+    val token: String? = null,
 )
 
 /**
@@ -34,9 +37,11 @@ object TaskerPayloadExtractor {
 
     private val json = Json { ignoreUnknownKeys = true }
 
-    fun extraer(message: String?, cmd: String?): PayloadTasker {
+    /** v1.2: tercer parámetro con default — los call sites de Fase 2 y los 19
+     *  tests existentes siguen compilando sin cambios (ADR-015 §2.2). */
+    fun extraer(message: String?, cmd: String?, token: String? = null): PayloadTasker {
         val texto = message ?: cmd ?: return PayloadTasker(null, false)
-        return PayloadTasker(texto, esContextoSilencioso(texto))
+        return PayloadTasker(texto, esContextoSilencioso(texto), token)
     }
 
     /** id best-effort del wire crudo (H6): string válido si existe, si no null. */
