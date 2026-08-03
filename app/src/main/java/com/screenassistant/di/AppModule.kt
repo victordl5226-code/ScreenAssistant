@@ -13,10 +13,12 @@ import com.screenassistant.core.domain.action.SystemAction
 import com.screenassistant.core.domain.bridge.CommandBridge
 import com.screenassistant.core.domain.bridge.SystemCommandJsonCodec
 import com.screenassistant.core.domain.di.IoDispatcher
+import com.screenassistant.core.domain.service.TextToSpeech
 import com.screenassistant.core.domain.repository.ConversationRepository
 import com.screenassistant.core.domain.repository.ScreenContextRepository
 import com.screenassistant.core.domain.usecase.CaptureScreenContextUseCase
 import com.screenassistant.core.domain.usecase.SystemCommandParser
+import com.screenassistant.feature.overlay.TextToSpeechManager
 import com.screenassistant.service.system.SystemActionHandler
 import com.screenassistant.service.system.action.AlarmAction
 import com.screenassistant.service.system.action.AlarmNotificationHelper
@@ -33,6 +35,10 @@ import com.screenassistant.service.system.action.MapsAction
 import com.screenassistant.service.system.action.MemoryAction
 import com.screenassistant.service.system.action.NoteAction
 import com.screenassistant.service.system.bridge.SystemCommandBridgeImpl
+import com.screenassistant.service.system.bridge.TaskerMessageHandler
+import com.screenassistant.service.system.bridge.TaskerMessageHandlerImpl
+import com.screenassistant.service.system.bridge.TaskerResponseEmitter
+import com.screenassistant.service.system.bridge.TaskerResponseEmitterImpl
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -104,6 +110,39 @@ object AppModule {
         codec: SystemCommandJsonCodec
     ): CommandBridge {
         return SystemCommandBridgeImpl(systemAction, codec)
+    }
+
+    // === Puente Tasker — Fase 2 (Lote 6 / ADR-014): transporte ===
+
+    // (a) TTS — canal humano (D4/T4): binding HILT NUEVO TextToSpeech → TextToSpeechManager.
+    // Riesgo aceptado (H7): coexisten dos instancias TTS (overlay y puente), cada una
+    // con su PROPIO motor → riesgo real = habla SIMULTÁNEA de dos motores si coinciden,
+    // no colisión de cola; uso secuencial aceptado (guion Tasker no corre con el overlay
+    // hablando a la vez). Reutilizar la del overlay sería un refactor fuera de alcance.
+    @Provides
+    @Singleton
+    fun provideTextToSpeech(@ApplicationContext context: Context): TextToSpeech {
+        return TextToSpeechManager(context)
+    }
+
+    @Provides
+    @Singleton
+    fun provideTaskerMessageHandler(
+        bridge: CommandBridge,
+        codec: SystemCommandJsonCodec,
+    ): TaskerMessageHandler {
+        return TaskerMessageHandlerImpl(bridge, codec)
+    }
+
+    // Sin @Inject constructor (precedente AlarmAction): se provee aquí con
+    // @ApplicationContext (el Context sin calificador no es inyectable por Hilt).
+    @Provides
+    @Singleton
+    fun provideTaskerResponseEmitter(
+        @ApplicationContext context: Context,
+        tts: TextToSpeech,
+    ): TaskerResponseEmitter {
+        return TaskerResponseEmitterImpl(context, tts)
     }
 
     @Provides

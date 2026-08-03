@@ -1,0 +1,252 @@
+package com.screenassistant.service.system.bridge
+
+import com.screenassistant.core.domain.action.SystemAction
+import com.screenassistant.core.domain.bridge.CommandBridge
+import com.screenassistant.core.domain.bridge.SystemCommandJsonCodec
+import io.mockk.coEvery
+import io.mockk.coVerify
+import io.mockk.mockk
+import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Test
+
+/**
+ * TaskerMessageHandlerImpl (P1, ADR-014/T6): SIEMPRE JSON de 6 claves (timeout
+ * incluido con tiempo VIRTUAL — runTest + delay > TIMEOUT_MS, sin Dispatchers en
+ * el handler), try/catch defensivo → fallo_ejecucion, id eco best-effort (H6) y
+ * origen null/no-null sin coste (QA #5 ACEPTADO).
+ */
+@OptIn(ExperimentalCoroutinesApi::class)
+class TaskerMessageHandlerTest {
+
+    private lateinit var bridge: CommandBridge
+    private lateinit var handler: TaskerMessageHandler
+
+    private val json = Json { ignoreUnknownKeys = false }
+    private val wire = """{"version":1,"id":"h-1","accion":"poner_volumen","valor":"subir"}"""
+    private val respuestaOk =
+        """{"version":1,"id":"h-1","estado":"ok","resultado":"Éxito: Volumen subido.","error":null,"mensaje":null}"""
+
+    @Before
+    fun setup() {
+        bridge = mockk()
+        handler = TaskerMessageHandlerImpl(bridge, SystemCommandJsonCodec())
+    }
+
+    /** Asserter compartido: el esquema SIEMPRE es de 6 claves (H4), en orden fijo. */
+    private fun assertSeisClaves(respuesta: String) {
+        val obj = json.parseToJsonElement(respuesta).jsonObject
+        assertEquals(
+            listOf("version", "id", "estado", "resultado", "error", "mensaje"),
+            obj.keys.toList(),
+        )
+    }
+
+    private fun estadoDe(respuesta: String): String? =
+        json.parseToJsonElement(respuesta).jsonObject["estado"]?.jsonPrimitive?.contentOrNull
+
+    private fun errorDe(respuesta: String): String? =
+        json.parseToJsonElement(respuesta).jsonObject["error"]?.jsonPrimitive?.contentOrNull
+
+    private fun idDe(respuesta: String): String? =
+        json.parseToJsonElement(respuesta).jsonObject["id"]?.jsonPrimitive?.contentOrNull
+
+    private fun mensajeDe(respuesta: String): String? =
+        json.parseToJsonElement(respuesta).jsonObject["mensaje"]?.jsonPrimitive?.contentOrNull
+
+    // ===== Delegación al puente =====
+
+    @Test
+    fun `delega en el puente y devuelve su json literal con 6 claves`() = runTest {
+        coEvery { bridge.handle(wire) } returns respuestaOk
+
+        val respuesta = handler.handle(wire, origen = null)
+
+        assertEquals(respuestaOk, respuesta)
+        coVerify(exactly = 1) { bridge.handle(wire) }
+        assertSeisClaves(respuesta)
+    }
+
+    @Test
+    fun `el error de decode del puente se propaga sin tocar`() = runTest {
+        val errorJson =
+            """{"version":1,"id":null,"estado":"error","resultado":null,"error":"json_invalido","mensaje":"Error: JSON invalido."}"""
+        coEvery { bridge.handle(any()) } returns errorJson
+
+        val respuesta = handler.handle(wire, origen = null)
+
+        assertEquals(errorJson, respuesta)
+        assertEquals("json_invalido", errorDe(respuesta))
+        assertSeisClaves(respuesta)
+    }
+
+    @Test
+    fun `la excepcion del puente produce fallo_ejecucion con id eco`() = runTest {
+        coEvery { bridge.handle(any()) } throws RuntimeException("boom")
+
+        val respuesta = handler.handle(wire, origen = null)
+
+        assertEquals("error", estadoDe(respuesta))
+        assertEquals("fallo_ejecucion", errorDe(respuesta))
+        assertEquals("Error: boom", mensajeDe(respuesta))
+        assertEquals("h-1", idDe(respuesta)) // eco best-effort del wire
+        assertSeisClaves(respuesta)
+    }
+
+    @Test
+    fun `la excepcion sin id en el wire devuelve id null en fallo_ejecucion`() = runTest {
+        coEvery { bridge.handle(any()) } throws RuntimeException("boom")
+        val wireSinId = """{"version":1,"accion":"abrir_app","aplicacion":"x"}"""
+
+        val respuesta = handler.handle(wireSinId, origen = null)
+
+        assertNull(idDe(respuesta))
+        assertEquals("fallo_ejecucion", errorDe(respuesta))
+    }
+
+    @Test
+    fun `la excepcion con mensaje nulo produce mensaje generico`() = runTest {
+        coEvery { bridge.handle(any()) } throws RuntimeException()
+
+        val respuesta = handler.handle(wire, origen = null)
+
+        assertEquals("Error: Error desconocido", mensajeDe(respuesta))
+    }
+
+    // ===== Timeout con tiempo virtual (D6, H6) =====
+
+    @Test
+    fun `el timeout produce error_timeout con 6 claves e id eco`() = runTest {
+        coEvery { bridge.handle(any()) } coAnswers {
+            delay(11_000) // > TIMEOUT_MS (10 s): el tiempo virtual dispara el timeout
+            "tarde"
+        }
+
+        val respuesta = handler.handle(wire, origen = null)
+
+        assertEquals("error", estadoDe(respuesta))
+        assertEquals("error_timeout", errorDe(respuesta))
+        assertEquals("Error: Tiempo de espera agotado.", mensajeDe(respuesta))
+        assertEquals("h-1", idDe(respuesta)) // H6: id eco best-effort del wire
+        assertSeisClaves(respuesta)
+    }
+
+    @Test
+    fun `el timeout con wire sin id devuelve id null`() = runTest {
+        coEvery { bridge.handle(any()) } coAnswers {
+            delay(11_000)
+            "tarde"
+        }
+        val wireSinId = """{"version":1,"accion":"abrir_app","aplicacion":"x"}"""
+
+        val respuesta = handler.handle(wireSinId, origen = null)
+
+        assertEquals("error_timeout", errorDe(respuesta))
+        assertNull(idDe(respuesta))
+        assertSeisClaves(respuesta)
+    }
+
+    @Test
+    fun `el puente que tarda menos del timeout responde sin error_timeout`() = runTest {
+        coEvery { bridge.handle(any()) } coAnswers {
+            delay(1_000) // dentro de la ventana
+            respuestaOk
+        }
+
+        val respuesta = handler.handle(wire, origen = null)
+
+        assertEquals("ok", estadoDe(respuesta))
+        assertEquals(respuestaOk, respuesta)
+    }
+
+    // ===== F0 intacta: blank → json_invalido (vía puente real) =====
+
+    @Test
+    fun `blank produce json_invalido intacto`() = runTest {
+        val puenteReal = SystemCommandBridgeImpl(mockk<SystemAction>(), SystemCommandJsonCodec())
+        val handlerReal = TaskerMessageHandlerImpl(puenteReal, SystemCommandJsonCodec())
+
+        val respuesta = handlerReal.handle("   ", origen = null)
+
+        assertEquals("error", estadoDe(respuesta))
+        assertEquals("json_invalido", errorDe(respuesta))
+        assertEquals("Error: JSON invalido.", mensajeDe(respuesta))
+        assertSeisClaves(respuesta)
+    }
+
+    // ===== Origen: QA #5 ACEPTADO — cualquier origen, sin coste de test =====
+
+    @Test
+    fun `origen null no afecta a la delegacion`() = runTest {
+        coEvery { bridge.handle(wire) } returns respuestaOk
+
+        val respuesta = handler.handle(wire, origen = null)
+
+        assertEquals(respuestaOk, respuesta)
+        coVerify(exactly = 1) { bridge.handle(wire) }
+    }
+
+    @Test
+    fun `origen de Tasker no afecta a la delegacion`() = runTest {
+        coEvery { bridge.handle(wire) } returns respuestaOk
+
+        val respuesta = handler.handle(wire, origen = "net.dinglisch.android.taskerm")
+
+        assertEquals(respuestaOk, respuesta)
+        coVerify(exactly = 1) { bridge.handle(wire) }
+    }
+
+    @Test
+    fun `origen de AutoRemote no afecta al resultado`() = runTest {
+        coEvery { bridge.handle(wire) } returns respuestaOk
+
+        val respuesta = handler.handle(wire, origen = "com.bighugegiraffe.andromeda")
+
+        assertEquals("ok", estadoDe(respuesta))
+    }
+
+    @Test
+    fun `el origen no altera el json de respuesta`() = runTest {
+        coEvery { bridge.handle(wire) } returns respuestaOk
+
+        val sinOrigen = handler.handle(wire, origen = null)
+        val conOrigen = handler.handle(wire, origen = "net.dinglisch.android.taskerm")
+
+        assertEquals(sinOrigen, conOrigen)
+    }
+
+    // ===== Cancelación del scope (cierre QA/Supervisor, punto 4) =====
+
+    @Test
+    fun `la cancelacion de la corrutina se propaga sin convertirse en fallo_ejecucion`() = runTest {
+        // El puente se queda colgado en un delay largo (no en timeout): la cancelación
+        // EXTERNA del job debe propagarse (catch CancellationException → rethrow), NO
+        // capturarse como Exception → fallo_ejecucion (que completaría el job).
+        coEvery { bridge.handle(any()) } coAnswers {
+            delay(60_000)
+            "tarde"
+        }
+
+        val deferred = async { handler.handle(wire, origen = null) }
+        testScheduler.advanceTimeBy(1_000) // el handler entra en bridge.handle (delay pendiente)
+        deferred.cancel()
+        deferred.join()
+
+        assertTrue("la cancelación debe propagarse, no completar con JSON", deferred.isCancelled)
+        assertTrue(
+            "la causa de finalización debe ser CancellationException",
+            deferred.getCompletionExceptionOrNull() is CancellationException,
+        )
+    }
+}

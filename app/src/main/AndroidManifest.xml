@@ -70,6 +70,20 @@
             </intent-filter>
         </receiver>
 
+        <!-- Lote 6 / ADR-014 (D2/D5): puente Tasker — entrada broadcast.
+             exported=true OBLIGATORIO (targetSdk 35) y necesario: el emisor es otra
+             app (Tasker Send Intent / AutoRemote). Sin directBootAware (necesita
+             usuario desbloqueado: Room/filesDir/TTS). Riesgo máximo documentado en
+             ADR-014/T5 (H2: con CALL_PHONE/SEND_SMS concedidos, una app maliciosa
+             podría disparar acciones programables por broadcast; F5 pendiente). -->
+        <receiver
+            android:name=".service.system.bridge.TaskerCommandReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.screenassistant.TASKER_COMMAND" />
+            </intent-filter>
+        </receiver>
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
