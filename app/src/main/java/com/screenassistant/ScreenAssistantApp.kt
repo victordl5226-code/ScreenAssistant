@@ -1,6 +1,7 @@
 package com.screenassistant
 
 import android.app.Application
+import com.screenassistant.core.data.util.ApiKeyProvider
 import com.screenassistant.service.system.action.AlarmAction
 import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
@@ -14,6 +15,10 @@ class ScreenAssistantApp : Application() {
     // Sin wrapper: AlarmAction se inyecta directamente (punto 9 QA).
     @Inject lateinit var alarmAction: AlarmAction
 
+    // B4: siembra inicial de la API key desde BuildConfig (una sola vez; el flag
+    // api_key_seeded evita re-sembrar si el usuario la borró a propósito).
+    @Inject lateinit var apiKeyProvider: ApiKeyProvider
+
     override fun onCreate() {
         super.onCreate()
         // O4-P2: tras un reinicio del proceso, AlarmManager pierde las alarmas;
@@ -23,5 +28,9 @@ class ScreenAssistantApp : Application() {
         CoroutineScope(Dispatchers.IO).launch {
             runCatching { alarmAction.restoreActiveAlarms() }
         }
+        // B4: sembrar la key ANTES de cualquier uso del repositorio de Gemini
+        // (mueve la carga fuera del primer @Provides — Dagger es lazy — y da un
+        // único punto de arranque observable).
+        runCatching { apiKeyProvider.sembrarDesdeBuildConfig(com.screenassistant.BuildConfig.GEMINI_API_KEY) }
     }
 }

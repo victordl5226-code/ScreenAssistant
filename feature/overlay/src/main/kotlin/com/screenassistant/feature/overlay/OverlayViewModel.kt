@@ -57,7 +57,10 @@ class OverlayViewModel @Inject constructor(
 
         viewModelScope.launch(ioDispatcher) {
             try {
-                val imageData = captureScreenContextUseCase.captureScreenshot()
+                // M21 (Lote 8): el texto de pantalla se lee SIEMPRE (barato, no
+                // bloquea) y la CAPTURA de imagen SOLO si el comando directo no
+                // aplica (antes se capturaba la pantalla también para comandos
+                // directos: trabajo de red+imagen desperdiciado en cada mensaje).
                 val screenText = captureScreenContextUseCase.getScreenText()
                 val isNetworkAvailable = true // Se verifica dentro del use case
 
@@ -71,6 +74,9 @@ class OverlayViewModel @Inject constructor(
                     }
                     return@launch
                 }
+
+                // M21: captura diferida — solo para Gemini (imagen null fail-soft).
+                val imageData = captureScreenContextUseCase.captureScreenshot()
 
                 // Enviar a Gemini
                 val contextText = screenText
@@ -179,7 +185,10 @@ class OverlayViewModel @Inject constructor(
         characterState.nextOutfit()
         _uiState.value = _uiState.value.copy(
             animationState = AnimationState.IDLE,
-            currentOutfitIndex = _uiState.value.currentOutfitIndex + 1
+            // M16 (Lote 8): el índice del UI con MÓDULO igual que CharacterState
+            // (antes crecía sin límite y, tras 10 cambios, la sincronía entre el
+            // UI y el estado del personaje se rompía).
+            currentOutfitIndex = (_uiState.value.currentOutfitIndex + 1) % characterState.outfitCount
         )
     }
 

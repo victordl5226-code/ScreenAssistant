@@ -335,4 +335,62 @@ class SystemActionHandlerTest {
         assertEquals(ActionResult.Success("Éxito: La nota dice: «pan»"), result)
         coVerify(exactly = 1) { noteAction.readNote("x") }
     }
+
+    // ===== B5: la cancelación de la corrutina se RE-LANZA en los 22 comandos =====
+    // Una CancellationException traga se traduciría a ActionResult.Error y la
+    // corrutina del overlay seguiría viva. Cada acción mockeada lanza la
+    // cancelación y el handler debe propagarla tal cual (no envolverla).
+
+    @Test
+    fun `la cancelacion se re-lanza en todos los comandos y nunca se convierte en Error`() = runTest {
+        // hasNetwork() real: el handler consulta ConnectivityManager por el contexto;
+        // sin stub, `as ConnectivityManager` lanza ClassCastException en JVM y el
+        // catch la convertiría en Error (falso negativo del B5 para QueueMessage).
+        val connectivityManager = mockk<android.net.ConnectivityManager>(relaxed = true)
+        every { context.getSystemService(Context.CONNECTIVITY_SERVICE) } returns connectivityManager
+
+        val cancel = kotlin.coroutines.cancellation.CancellationException("cancelada")
+        val scenarios: List<Pair<SystemCommand, () -> Unit>> = listOf(
+            SystemCommand.Call("Ana") to { every { callAction.makeCall("Ana") } throws cancel },
+            SystemCommand.SendSms("Ana", "hola") to { every { callAction.sendSms("Ana", "hola") } throws cancel },
+            SystemCommand.SetAlarm(7, 30, null) to { coEvery { alarmAction.setAlarm(7, 30, null) } throws cancel },
+            SystemCommand.OpenApp("whatsapp") to { every { appLauncherAction.launchApp("whatsapp") } throws cancel },
+            SystemCommand.SearchFile("factura") to { every { searchAction.searchFile("factura") } throws cancel },
+            SystemCommand.QueueMessage("WhatsApp", "Ana", "hola") to {
+                coEvery { messagingAction.queueWhatsApp("Ana", "hola", any(), callAction) } throws cancel
+            },
+            SystemCommand.OpenAlarms to { every { alarmAction.openAlarms() } throws cancel },
+            SystemCommand.CancelAlarm(7, 0) to { coEvery { alarmAction.cancelAlarm(7, 0) } throws cancel },
+            SystemCommand.SearchGoogle("gatos") to { every { mediaAction.searchGoogle("gatos") } throws cancel },
+            SystemCommand.OpenYouTube("musica") to { every { mediaAction.openYouTube("musica") } throws cancel },
+            SystemCommand.OpenWhatsApp to { every { messagingAction.openWhatsApp() } throws cancel },
+            SystemCommand.PlayMusic("rock") to { every { mediaAction.playMusic("rock") } throws cancel },
+            SystemCommand.SetVolume(VolumeAction.UP) to { every { systemVolumeAction.setVolume(VolumeAction.UP) } throws cancel },
+            SystemCommand.SetLanguage(AssistantLanguage.ENGLISH) to {
+                every { languageAction.setLanguage(AssistantLanguage.ENGLISH) } throws cancel
+            },
+            SystemCommand.SetTimer(5) to { every { timerAction.setTimer(5) } throws cancel },
+            SystemCommand.Navigate("oficina") to { every { mapsAction.navigateTo("oficina") } throws cancel },
+            SystemCommand.OpenSettings to { every { settingsAction.openSettings() } throws cancel },
+            SystemCommand.CallNumber("600123456") to {
+                every { callAction.makeCallToNumber("600123456") } throws cancel
+            },
+            SystemCommand.SaveMemory("dato") to { coEvery { memoryAction.saveMemory("dato") } throws cancel },
+            SystemCommand.CreateNote("nota") to { coEvery { noteAction.saveNote("nota") } throws cancel },
+            SystemCommand.ReadNotes to { coEvery { noteAction.readNotesSummary() } throws cancel },
+            SystemCommand.ReadNote("pan") to { coEvery { noteAction.readNote("pan") } throws cancel }
+        )
+
+        scenarios.forEach { (command, stub) ->
+            stub()
+            // B5: la cancelación se propaga (assertThrows no vale: handler.execute es
+            // suspend → try/catch explícito con fail), NUNCA se traduce a Error.
+            try {
+                handler.execute(command)
+                org.junit.Assert.fail("Se esperaba CancellationException para $command")
+            } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+                // Esperado: la cancelación se re-lanza tal cual.
+            }
+        }
+    }
 }

@@ -53,6 +53,12 @@ class AlarmAction(
         "Error: Dime a qué hora quieres la alarma, por ejemplo: 'pon una alarma a las 7:30'."
 
     suspend fun setAlarm(hour: Int, minute: Int, label: String?): String {
+        // B2: guard defensivo — último filtro antes de programar. La rama directa del
+        // parser y la function call de Gemini ya validan, pero un valor fuera de rango
+        // aquí produciría un requestCode negativo o un nextTrigger imposible.
+        if (hour !in 0..23 || minute !in 0..59) {
+            return "Error: Hora (0-23) o minuto (0-59) inválidos."
+        }
         val scheduler = alarmSchedulerProvider()
         if (!scheduler.canScheduleExactAlarms()) {
             return "Error: La app no puede programar alarmas exactas. Activa 'Alarmas y recordatorios' en los ajustes del sistema."
@@ -96,6 +102,9 @@ class AlarmAction(
             store.clearAll()
             return "Éxito: He cancelado todas las alarmas."
         }
+        // Si llegamos aquí, al menos uno NO es null (el caso ambos-null retornó arriba).
+        // El ?: 0 rellena el que falte: cancelación "en punto" (hora exacta, minuto 0)
+        // — contrato cubierto por test (ver `cancelAlarm con hora y sin minutos`).
         val h = hour ?: 0
         val m = minute ?: 0
         val requestCode = h * 60 + m
@@ -121,6 +130,13 @@ class AlarmAction(
      * Guard de permiso (QA Supervisor): sin canScheduleExactAlarms (API 31+) no se
      * toca nada — setExactAndAllowWhileIdle lanzaría SecurityException y el
      * runCatching del arranque la tragaría dejando filas fantasma.
+     *
+     * M5: aislamiento POR FILA — si el sistema rechaza una reprogramación
+     * (SecurityException en API 31+, IllegalArgumentException...), el resto de las
+     * filas se siguen procesando (antes la excepción abortaba el forEach y el
+     * resto quedaba SIN reprogramar en silencio: restauración parcial). La fila
+     * rechazada no se persiste (TOCTOU: setExact primero, upsert después) y
+     * permanece con su trigger anterior → el próximo arranque reintentará.
      */
     suspend fun restoreActiveAlarms() {
         val scheduler = alarmSchedulerProvider()
@@ -129,10 +145,17 @@ class AlarmAction(
         store.allAlarms().forEach { alarm ->
             if (alarm.triggerAtMillis > calendar.timeInMillis) {
                 val trigger = nextTrigger(alarm.hour, alarm.minute, calendar)
-                // TOCTOU: setExact primero, upsert después (si el sistema rechaza la
-                // reprogramación, la fila se elimina abajo o se queda sin programar).
-                scheduler.setExactAndAllowWhileIdle(trigger.timeInMillis, buildPendingIntent(alarm.requestCode))
-                store.upsertAlarm(alarm.copy(triggerAtMillis = trigger.timeInMillis))
+                try {
+                    // TOCTOU: setExact primero, upsert después (si el sistema rechaza la
+                    // reprogramación, la fila NO se persiste con el nuevo trigger).
+                    scheduler.setExactAndAllowWhileIdle(trigger.timeInMillis, buildPendingIntent(alarm.requestCode))
+                    store.upsertAlarm(alarm.copy(triggerAtMillis = trigger.timeInMillis))
+                } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+                    throw e  // B5: la cancelación nunca se traga
+                } catch (e: Exception) {
+                    // M5: fila rechazada → se omite SIN abortar el resto; la fila
+                    // queda con su trigger anterior (reintento en el próximo arranque).
+                }
             } else {
                 store.removeAlarm(alarm.requestCode)
             }

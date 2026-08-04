@@ -23,6 +23,8 @@ class CallAction @Inject constructor(
             } else {
                 "Error: No encontré el número de $contactName en tus contactos."
             }
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            throw e  // B5: la cancelación nunca se traga
         } catch (e: Exception) {
             "Error: No tengo permiso para llamar o hubo un error."
         }
@@ -36,6 +38,8 @@ class CallAction @Inject constructor(
             }
             context.startActivity(intent)
             "Éxito: Llamando al $phoneNumber..."
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            throw e  // B5: la cancelación nunca se traga
         } catch (e: Exception) {
             "Error: No tengo permiso para llamar o hubo un error."
         }
@@ -51,6 +55,8 @@ class CallAction @Inject constructor(
             }
             context.startActivity(intent)
             "Éxito: Preparando SMS para $contactName."
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            throw e  // B5: la cancelación nunca se traga
         } catch (e: Exception) {
             "Error: No se pudo enviar el SMS."
         }

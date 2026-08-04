@@ -44,6 +44,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import coil.decode.GifDecoder
@@ -180,7 +181,7 @@ fun AssistantOverlayUI(
                     .decoderFactory(if (Build.VERSION.SDK_INT >= 28) ImageDecoderDecoder.Factory() else GifDecoder.Factory())
                     .crossfade(true)
                     .build(),
-                contentDescription = "Assistant Character",
+                contentDescription = stringResource(R.string.overlay_assistant_character),
                 modifier = Modifier
                     .height(260.dp)
                     .width(200.dp),
@@ -215,7 +216,7 @@ fun AssistantOverlayUI(
                     ) {
                         Icon(
                             imageVector = if (uiState.isListening) Icons.Default.MicOff else Icons.Default.Mic,
-                            contentDescription = "Voz",
+                            contentDescription = stringResource(R.string.overlay_voice),
                             tint = if (uiState.isListening) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(18.dp)
                         )
@@ -235,7 +236,7 @@ fun AssistantOverlayUI(
                         decorationBox = { innerTextField ->
                             if (uiState.inputText.isEmpty()) {
                                 Text(
-                                    text = "Habla...",
+                                    text = stringResource(R.string.overlay_voice_hint),
                                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
                                     style = MaterialTheme.typography.labelSmall
                                 )
@@ -253,7 +254,7 @@ fun AssistantOverlayUI(
                     ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.Send,
-                            contentDescription = "Enviar",
+                            contentDescription = stringResource(R.string.overlay_send),
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(18.dp)
                         )
@@ -266,7 +267,7 @@ fun AssistantOverlayUI(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Checkroom,
-                            contentDescription = "Atuendo",
+                            contentDescription = stringResource(R.string.overlay_change_outfit),
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(18.dp)
                         )
@@ -279,22 +280,23 @@ fun AssistantOverlayUI(
 
 /** Comandos disponibles que la asistente entiende por voz (contenido de la tarjeta de ayuda). */
 object HelpContent {
-    val COMMANDS = listOf(
-        "Llama a Ana",
-        "Llama al 600 123 456",
-        "Busca gatos",
-        "Abre whatsapp",
-        "Abre los ajustes",
-        "Pon una alarma a las 7:30",
-        "Pon una alarma a las siete y media",
-        "Pon un temporizador de 5 minutos",
-        "Sube el volumen",
-        "Baja el volumen",
-        "Silencio",
-        "Llévame a la oficina",
-        "Habla en inglés",
-        "Recuerda que me gusta el café",
-        "Repite"
+    // M12: IDs de recurso (no literales) — la tarjeta resuelve el texto con stringResource.
+    val COMMANDS: List<Int> = listOf(
+        R.string.overlay_command_call_ana,
+        R.string.overlay_command_call_number,
+        R.string.overlay_command_search,
+        R.string.overlay_command_open_whatsapp,
+        R.string.overlay_command_open_settings,
+        R.string.overlay_command_alarm_exact,
+        R.string.overlay_command_alarm_words,
+        R.string.overlay_command_timer,
+        R.string.overlay_command_volume_up,
+        R.string.overlay_command_volume_down,
+        R.string.overlay_command_mute,
+        R.string.overlay_command_navigate,
+        R.string.overlay_command_language,
+        R.string.overlay_command_remember,
+        R.string.overlay_command_repeat
     )
 }
 
@@ -314,13 +316,15 @@ private fun HelpCard(onDismiss: () -> Unit) {
         val scrollState = rememberScrollState()
         Column(modifier = Modifier.padding(8.dp).verticalScroll(scrollState)) {
             Text(
-                text = "Puedo hacer esto:",
+                text = stringResource(R.string.overlay_help_title),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurface
             )
             HelpContent.COMMANDS.forEach { command ->
                 Text(
-                    text = "• $command",
+                    // M12: el bullet y el texto se resuelven con stringResource — antes
+                    // "• $command" imprimía el ID numérico del recurso en la tarjeta.
+                    text = stringResource(R.string.overlay_help_command_bullet, stringResource(command)),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

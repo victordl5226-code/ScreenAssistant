@@ -17,6 +17,8 @@ class SettingsAction @Inject constructor(
             }
             context.startActivity(intent)
             "Éxito: Abriendo ajustes del sistema."
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            throw e  // B5: la cancelación nunca se traga
         } catch (e: Exception) {
             "Error: No se pudieron abrir los ajustes."
         }

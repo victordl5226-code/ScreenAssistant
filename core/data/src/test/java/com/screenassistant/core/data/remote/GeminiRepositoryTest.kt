@@ -21,6 +21,7 @@ import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
@@ -464,5 +465,118 @@ class GeminiRepositoryTest {
                     .contains("User language (English by default).")
             })
         }
+    }
+
+    // ===== B2: set_alarm con args inválidos (antes: fallback a 0 → alarma 0:00 fantasma) =====
+
+    // Rama VÁLIDA del branch (QA Lote 8): hora y minuto dentro de rango SÍ ejecutan
+    // la acción — la rama else de la validación B2 no tenía cobertura.
+    @Test
+    fun `set_alarm con hora y minuto validos ejecuta la accion`() = runTest {
+        val modelMock = mockk<GenerativeModel>()
+        val chatMock = mockk<Chat>()
+        val callResponse = mockk<GenerateContentResponse>()
+        val finalResponse = mockk<GenerateContentResponse>()
+        every { modelMock.startChat() } returns chatMock
+        coEvery { chatMock.sendMessage(any<Content>()) } returns callResponse andThen finalResponse
+        every { callResponse.functionCalls } returns listOf(
+            FunctionCallPart("set_alarm", mapOf("hour" to "7", "minute" to "30", "label" to "despertarme"))
+        )
+        every { callResponse.text } returns null
+        every { finalResponse.functionCalls } returns emptyList()
+        every { finalResponse.text } returns "Listo."
+        every { modelFactory.create(any(), any(), any()) } returns modelMock
+        coEvery { systemAction.execute(SystemCommand.SetAlarm(7, 30, "despertarme")) } returns
+            ActionResult.Success("Alarma a las 7:30")
+
+        val result = repo.sendMessage("pon la alarma a las 7:30")
+
+        assertEquals("Listo.", result)
+        // B2 rama válida: se ejecuta SetAlarm con la hora/minuto parseados y el label.
+        coVerify(exactly = 1) { systemAction.execute(SystemCommand.SetAlarm(7, 30, "despertarme")) }
+    }
+
+    @Test
+    fun `set_alarm con hora fuera de rango devuelve error y no ejecuta la accion`() = runTest {
+        val modelMock = mockk<GenerativeModel>()
+        val chatMock = mockk<Chat>()
+        val callResponse = mockk<GenerateContentResponse>()
+        val finalResponse = mockk<GenerateContentResponse>()
+        every { modelMock.startChat() } returns chatMock
+        coEvery { chatMock.sendMessage(any<Content>()) } returns callResponse andThen finalResponse
+        every { callResponse.functionCalls } returns listOf(
+            FunctionCallPart("set_alarm", mapOf("hour" to "25", "minute" to "0"))
+        )
+        every { callResponse.text } returns null
+        every { finalResponse.functionCalls } returns emptyList()
+        every { finalResponse.text } returns "Listo."
+        every { modelFactory.create(any(), any(), any()) } returns modelMock
+
+        val result = repo.sendMessage("pon la alarma a las 25")
+
+        assertEquals("Listo.", result)
+        // B2: hora 25 fuera de 0..23 → NUNCA se ejecuta la acción (antes: SetAlarm(0, 0)).
+        coVerify(exactly = 0) { systemAction.execute(any()) }
+    }
+
+    @Test
+    fun `set_alarm con minuto fuera de rango devuelve error y no ejecuta la accion`() = runTest {
+        val modelMock = mockk<GenerativeModel>()
+        val chatMock = mockk<Chat>()
+        val callResponse = mockk<GenerateContentResponse>()
+        val finalResponse = mockk<GenerateContentResponse>()
+        every { modelMock.startChat() } returns chatMock
+        coEvery { chatMock.sendMessage(any<Content>()) } returns callResponse andThen finalResponse
+        every { callResponse.functionCalls } returns listOf(
+            FunctionCallPart("set_alarm", mapOf("hour" to "7", "minute" to "75"))
+        )
+        every { callResponse.text } returns null
+        every { finalResponse.functionCalls } returns emptyList()
+        every { finalResponse.text } returns "Listo."
+        every { modelFactory.create(any(), any(), any()) } returns modelMock
+
+        val result = repo.sendMessage("pon la alarma a las 7 y 75")
+
+        assertEquals("Listo.", result)
+        coVerify(exactly = 0) { systemAction.execute(any()) }
+    }
+
+    @Test
+    fun `set_alarm con hora no numerica devuelve error y no ejecuta la accion`() = runTest {
+        val modelMock = mockk<GenerativeModel>()
+        val chatMock = mockk<Chat>()
+        val callResponse = mockk<GenerateContentResponse>()
+        val finalResponse = mockk<GenerateContentResponse>()
+        every { modelMock.startChat() } returns chatMock
+        coEvery { chatMock.sendMessage(any<Content>()) } returns callResponse andThen finalResponse
+        every { callResponse.functionCalls } returns listOf(
+            FunctionCallPart("set_alarm", mapOf("hour" to "mañana", "minute" to "30"))
+        )
+        every { callResponse.text } returns null
+        every { finalResponse.functionCalls } returns emptyList()
+        every { finalResponse.text } returns "Listo."
+        every { modelFactory.create(any(), any(), any()) } returns modelMock
+
+        val result = repo.sendMessage("pon la alarma mañana")
+
+        assertEquals("Listo.", result)
+        coVerify(exactly = 0) { systemAction.execute(any()) }
+    }
+
+    // ===== M3: streamMessage captura IOException durante la RECOLECCIÓN del flujo =====
+
+    @Test
+    fun `streamMessage captura IOException durante la recoleccion y emite error sin propagar`() = runTest {
+        val modelMock = mockk<GenerativeModel>()
+        val chatMock = mockk<Chat>()
+        every { modelMock.startChat() } returns chatMock
+        coEvery { chatMock.sendMessageStream(any<String>()) } returns flow {
+            throw java.io.IOException("red caída")
+        }
+        every { modelFactory.create(any(), any(), any()) } returns modelMock
+
+        val values = repo.streamMessage("hola").toList()
+
+        assertEquals(listOf("Error en streaming: red caída"), values)
     }
 }

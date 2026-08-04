@@ -132,6 +132,33 @@ class TextToSpeechManagerTest {
         assertEquals("texto-6", textosHablados.last())
     }
 
+    // ===== M19: fallback de idioma — no se fuerza español =====
+
+    @Test
+    fun `onInit con idioma no disponible retiene y drena cuando el idioma esta`() {
+        // M19: el idioma del dispositivo no está instalado (LANG_MISSING_DATA) →
+        // el motor no puede hablar ESE idioma (no se fuerza español): el manager
+        // NO inicializa y los pendientes quedan retenidos (sin drop ni habla
+        // en un idioma que el usuario no entiende).
+        every {
+            constructedWith<TextToSpeech>(ttsCtxMatcher, ttsListenerMatcher).setLanguage(any())
+        } returns TextToSpeech.LANG_MISSING_DATA
+
+        manager.speak("hola")
+        manager.onInit(TextToSpeech.SUCCESS)
+
+        assertTrue("sin idioma instalado no se debe hablar", textosHablados.isEmpty())
+
+        // El idioma del dispositivo se instala → nuevo init con idioma disponible:
+        // el manager inicializa y drena lo retenido (fallback efectivo del idioma).
+        every {
+            constructedWith<TextToSpeech>(ttsCtxMatcher, ttsListenerMatcher).setLanguage(any())
+        } returns TextToSpeech.LANG_AVAILABLE
+        manager.onInit(TextToSpeech.SUCCESS)
+
+        assertEquals(listOf("hola"), textosHablados)
+    }
+
     // ===== Contrato previo intacto: motor listo → speak directo sin buffer =====
 
     @Test

@@ -20,6 +20,8 @@ class MapsAction @Inject constructor(
             }
             context.startActivity(intent)
             "Éxito: Abriendo Maps hacia $destination."
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            throw e  // B5: la cancelación nunca se traga
         } catch (e: Exception) {
             "Error: No se pudo abrir Maps."
         }

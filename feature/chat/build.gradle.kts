@@ -46,4 +46,6 @@ dependencies {
     // Testing
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
+    // M26: MockK (misma versión que el resto de módulos — regla 6: sin fakes manuales)
+    testImplementation("io.mockk:mockk:1.13.12")
 }

@@ -178,6 +178,29 @@ class NoteActionTest {
         assertEquals("1750000000000.txt", receivedFile?.name)
     }
 
+    // ===== B5: la cancelación de la corrutina se RE-LANZA (nunca se traga) =====
+
+    @Test
+    fun `saveNote re-lanza CancellationException y no la convierte en error`() = runTest {
+        // withContext(IO) es cancellable; si la corrutina se cancela a mitad de la
+        // escritura, el catch(Exception) no debe traducirla a "Error: No pude guardar".
+        val action = NoteAction(
+            context = mockk(relaxed = true),
+            notesDirProvider = { File(tempFolder.root, "notas") },
+            now = { fixedMillis },
+            writeNote = { _, _ ->
+                throw kotlin.coroutines.cancellation.CancellationException("cancelada")
+            }
+        )
+
+        try {
+            action.saveNote("hola")
+            org.junit.Assert.fail("Se esperaba CancellationException")
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            // Esperado: la cancelación se re-lanza tal cual.
+        }
+    }
+
     // ===== N-OBS5: truncado por code points (nunca parte un surrogate pair) =====
 
     @Test

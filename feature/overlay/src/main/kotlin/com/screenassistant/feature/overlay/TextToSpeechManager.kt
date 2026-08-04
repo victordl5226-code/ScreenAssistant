@@ -18,6 +18,20 @@ import java.util.Locale
  * no las obsoletas) y se drena en orden en `onInit` cuando el motor queda listo.
  * Si el motor falla (`onInit` con error), el buffer se limpia sin hablar.
  *
+ * Concurrencia (B6): `speak()` puede llegar desde el hilo IO del ViewModel o del
+ * puente mientras `onInit` corre en el hilo binder del motor → el `ArrayDeque` y
+ * `isInitialized` se protegen con `@Synchronized`/`@Volatile` (sin esto: corrupción
+ * de índice o lectura stale que encolaría para siempre). La validación de esta
+ * carrera es MANUAL en dispositivo (no reproducible en JVM unit): el guion es
+ * arrancar el proceso con el puente enviando una respuesta inmediata.
+ *
+ * M19: idioma — se intenta es-ES PRIMERO (la asistente es bilingüe español) y, si el
+ * motor no tiene datos de ese idioma (LANG_MISSING_DATA / LANG_NOT_SUPPORTED), se
+ * cae al idioma del dispositivo (`Locale.getDefault()`). LIMITACIÓN documentada: si
+ * AMBOS fallan, el motor no puede hablar — `isInitialized` queda false y los textos
+ * se retienen en el buffer (mudez controlada con drenado si el idioma se instala
+ * después; el límite del buffer protege la memoria). Sin drop silencioso.
+ *
  * El contrato público de `speak` no cambia: best-effort con buffer.
  */
 class TextToSpeechManager(
@@ -27,20 +41,33 @@ class TextToSpeechManager(
 ) : TextToSpeech.OnInitListener, TextToSpeechService {
 
     private var tts: TextToSpeech? = TextToSpeech(context, this)
+
+    /** B6: @Volatile — `speak()` (hilo IO) lee este flag mientras `onInit` (binder)
+     *  lo escribe; sin el flag, una lectura stale encolaría para siempre. */
+    @Volatile
     private var isInitialized = false
 
-    /** Buffer FIFO de pendientes (solo se usa mientras el motor no está listo). */
+    /** Buffer FIFO de pendientes (solo se usa mientras el motor no está listo).
+     *  Acceso serializado por @Synchronized en speak/onInit (B6). */
     private val buffer: ArrayDeque<String> = ArrayDeque()
 
+    @Synchronized
     override fun onInit(status: Int) {
         if (status == TextToSpeech.SUCCESS) {
-            val result = tts?.setLanguage(Locale.getDefault())
+            // M19: es-ES PRIMERO (la asistente es bilingüe español) con fallback al
+            // idioma del dispositivo si el motor no tiene datos del español. Si AMBOS
+            // fallan (LANG_MISSING_DATA en ambos) el motor no puede hablar: retención
+            // en buffer (drenado si el idioma se instala después) — ver KDoc de clase.
+            var result = tts?.setLanguage(Locale("es", "ES"))
+            if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+                result = tts?.setLanguage(Locale.getDefault())
+            }
             if (result != TextToSpeech.LANG_MISSING_DATA && result != TextToSpeech.LANG_NOT_SUPPORTED) {
                 isInitialized = true
                 setupCallbacks()
                 drenarBuffer()
             }
-            // Si setLanguage falla el motor no puede hablar: los pendientes quedan
+            // Si ambos idiomas fallan el motor no puede hablar: los pendientes quedan
             // retenidos (el límite del buffer protege la memoria) — mismo resultado
             // audible que el drop silencioso previo, sin perder el caso feliz.
         } else {
@@ -59,6 +86,7 @@ class TextToSpeechManager(
         })
     }
 
+    @Synchronized
     override fun speak(text: String) {
         if (isInitialized) {
             tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "assistant_voice")
@@ -70,7 +98,10 @@ class TextToSpeechManager(
     }
 
     /** Drena los pendientes EN ORDEN (FIFO): con QUEUE_ADD cada texto suena tras el
-     *  anterior (el motor recién inicializado tiene la cola vacía — no hay pisado). */
+     *  anterior (el motor recién inicializado tiene la cola vacía — no hay pisado).
+     *  @Synchronized por defensa (B6): solo se invoca desde onInit, pero el buffer
+     *  compartido queda bajo el mismo monitor en cualquier punto futuro. */
+    @Synchronized
     private fun drenarBuffer() {
         while (buffer.isNotEmpty()) {
             tts?.speak(buffer.removeFirst(), TextToSpeech.QUEUE_ADD, null, "assistant_voice")

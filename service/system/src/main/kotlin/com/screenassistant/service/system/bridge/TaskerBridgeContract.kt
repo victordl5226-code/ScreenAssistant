@@ -38,6 +38,12 @@ object TaskerBridgeContract {
      *  toca core/domain. Respuesta fail-closed: el bridge NO se ejecuta. */
     const val CODIGO_TOKEN_INVALIDO = "token_invalido"
 
+    /** ADR-B7 (Lote 8): fallo FUNCIONAL — la acción se ejecutó pero devolvió
+     *  "Error: ..." (patrón ADR-009, p.ej. "Error: No encontré la app"). Distinto
+     *  del estructural `fallo_ejecucion` (excepción). Lo emite SOLO la rama
+     *  Success de SystemCommandBridgeImpl vía ResultadoWire.estadoDe. */
+    const val CODIGO_FALLO_ACCION = "fallo_accion"
+
     /** Patrón ADR-009: "Error: <razón>." — llega al emisor en `mensaje`. */
     const val MSG_TOKEN_INVALIDO = "Error: Token inválido."
 

@@ -61,8 +61,26 @@ class ApiKeyProvider @Inject constructor(
         }
     }
 
+    // B4 (Lote 8): siembra inicial desde BuildConfig en el arranque de la app.
+    // El flag api_key_seeded evita re-sembrar si el usuario la BORRÓ a propósito
+    // (clearApiKey no borra el flag: una vez sembrada, el control es del usuario).
+    // Un solo edit() con ambas claves: sin estados intermedios observables.
+    fun sembrarDesdeBuildConfig(buildConfigKey: String) {
+        if (buildConfigKey.isBlank()) return
+        try {
+            if (prefs.getBoolean("api_key_seeded", false)) return
+            prefs.edit()
+                .putBoolean("api_key_seeded", true)
+                .putString("gemini_api_key", buildConfigKey)
+                .apply()
+        } catch (e: Exception) {
+            Log.w(tag, "Error sembrando API key: ${e.message}")
+        }
+    }
+
     fun clearApiKey() {
         try {
+            // B4: NO se borra api_key_seeded (el usuario la borró → no re-sembrar).
             prefs.edit().remove("gemini_api_key").apply()
         } catch (e: Exception) {
             Log.w(tag, "Error eliminando API key: ${e.message}")

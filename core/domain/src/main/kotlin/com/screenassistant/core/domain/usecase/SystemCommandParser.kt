@@ -316,11 +316,24 @@ open class SystemCommandParser(
             }
 
             // 12. Alarma: con hora hablada → SetAlarm; sin hora → OpenAlarms
+            // B1: el anchor (las|la) de TimePhraseParser capturaba el "la" del sustantivo
+            // ("pon la alarma a las 7" → hora "alarma" → null → OpenAlarms). Igual que la
+            // rama 11b, la hora se busca SOLO sobre el subtexto posterior a "alarma".
             trimmed.contains("alarma") -> {
-                val match = TimePhraseParser.findMatch(trimmed)
+                val base = trimmed.substringAfter("alarma")
+                val match = TimePhraseParser.findMatch(base)
                 if (match != null) {
-                    val paraIdx = text.indexOf("para ", match.matchEnd)
-                    val label = if (paraIdx >= 0) text.substring(paraIdx + 5).trim().ifBlank { null } else null
+                    // La etiqueta "para X" se re-ancla sobre el MISMO subtexto (base) y
+                    // SOLO tras el match de hora: "pon la alarma para las 8" no tiene
+                    // etiqueta (el "para" previo es preposición de la hora) y "pon la
+                    // alarma a las 7:30 para despertarme" → "despertarme". Se extrae del
+                    // ORIGINAL preservando el case (normalización 1:1 → índices válidos).
+                    val paraIdx = base.indexOf("para ", match.matchEnd)
+                    val label = if (paraIdx >= 0) {
+                        text.substringAfter("alarma").substring(paraIdx + 5).trim().ifBlank { null }
+                    } else {
+                        null
+                    }
                     execute(SystemCommand.SetAlarm(match.time.hour, match.time.minute, label))
                 } else {
                     execute(SystemCommand.OpenAlarms)

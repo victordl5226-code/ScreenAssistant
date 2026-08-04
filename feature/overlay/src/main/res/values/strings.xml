@@ -1,0 +1,29 @@
+<resources>
+    <!-- Overlay (Lote 8 — M12): textos migrados desde hardcodes de AssistantOverlayUI.
+         Nota de arquitectura: viven en feature:overlay (no en app) porque el módulo
+         tiene su propio R y no depende de :app. -->
+    <string name="overlay_assistant_character">Personaje Asistente</string>
+    <string name="overlay_voice">Entrada de voz</string>
+    <string name="overlay_voice_hint">Habla...</string>
+    <string name="overlay_send">Enviar</string>
+    <string name="overlay_change_outfit">Cambiar atuendo</string>
+    <string name="overlay_help_title">Puedo hacer esto:</string>
+    <string name="overlay_help_command_bullet">• %1$s</string>
+
+    <!-- Tarjeta de ayuda: ejemplos de comandos por voz -->
+    <string name="overlay_command_call_ana">Llama a Ana</string>
+    <string name="overlay_command_call_number">Llama al 600 123 456</string>
+    <string name="overlay_command_search">Busca gatos</string>
+    <string name="overlay_command_open_whatsapp">Abre whatsapp</string>
+    <string name="overlay_command_open_settings">Abre los ajustes</string>
+    <string name="overlay_command_alarm_exact">Pon una alarma a las 7:30</string>
+    <string name="overlay_command_alarm_words">Pon una alarma a las siete y media</string>
+    <string name="overlay_command_timer">Pon un temporizador de 5 minutos</string>
+    <string name="overlay_command_volume_up">Sube el volumen</string>
+    <string name="overlay_command_volume_down">Baja el volumen</string>
+    <string name="overlay_command_mute">Silencio</string>
+    <string name="overlay_command_navigate">Llévame a la oficina</string>
+    <string name="overlay_command_language">Habla en inglés</string>
+    <string name="overlay_command_remember">Recuerda que me gusta el café</string>
+    <string name="overlay_command_repeat">Repite</string>
+</resources>

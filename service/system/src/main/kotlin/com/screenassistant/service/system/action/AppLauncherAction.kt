@@ -56,6 +56,8 @@ class AppLauncherAction @Inject constructor(
                     "Error: No encontré ninguna aplicación llamada '$query'."
                 }
             }
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            throw e  // B5: la cancelación nunca se traga
         } catch (e: Exception) {
             android.util.Log.w(TAG, "No se pudo abrir la aplicación '$query'", e)
             "Error: No se pudo abrir la aplicación."

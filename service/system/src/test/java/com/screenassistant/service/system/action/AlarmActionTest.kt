@@ -37,15 +37,23 @@ import org.junit.Test
  */
 class AlarmActionTest {
 
-    private class FakeAlarmScheduler(var canSchedule: Boolean = true) : AlarmScheduler {
+    private class FakeAlarmScheduler(
+        var canSchedule: Boolean = true,
+        // M5: simula el rechazo del sistema en la PRIMERA reprogramación.
+        private val throwOnFirstSetExact: Boolean = false
+    ) : AlarmScheduler {
         data class SetExactCall(val triggerAtMillis: Long, val pendingIntent: PendingIntent)
 
         val setExactCalls = mutableListOf<SetExactCall>()
         val cancelCalls = mutableListOf<PendingIntent>()
+        private var setExactAttempts = 0
 
         override fun canScheduleExactAlarms(): Boolean = canSchedule
 
         override fun setExactAndAllowWhileIdle(triggerAtMillis: Long, pendingIntent: PendingIntent) {
+            // Contador de INTENTOS (no setExactCalls: la llamada que lanza no registra).
+            setExactAttempts++
+            if (throwOnFirstSetExact && setExactAttempts == 1) throw RuntimeException("boom")
             setExactCalls.add(SetExactCall(triggerAtMillis, pendingIntent))
         }
 
@@ -204,6 +212,26 @@ class AlarmActionTest {
         coVerify(exactly = 1) { store.upsertAlarm(match { it.requestCode == 19 * 60 + 5 }) }
     }
 
+    // ===== B2: guard de rango (último filtro antes de programar) =====
+
+    @Test
+    fun `setAlarm con hora fuera de rango devuelve error y no programa`() = runTest {
+        val result = alarmAction.setAlarm(24, 0, null)
+
+        assertEquals("Error: Hora (0-23) o minuto (0-59) inválidos.", result)
+        assertTrue(scheduler.setExactCalls.isEmpty())
+        coVerify(exactly = 0) { store.upsertAlarm(any()) }
+    }
+
+    @Test
+    fun `setAlarm con minuto fuera de rango devuelve error y no programa`() = runTest {
+        val result = alarmAction.setAlarm(7, 60, null)
+
+        assertEquals("Error: Hora (0-23) o minuto (0-59) inválidos.", result)
+        assertTrue(scheduler.setExactCalls.isEmpty())
+        coVerify(exactly = 0) { store.upsertAlarm(any()) }
+    }
+
     // ===== cancelAlarm =====
 
     @Test
@@ -322,6 +350,42 @@ class AlarmActionTest {
         }
         assertEquals(AlarmAction.ACTION_ALARM_FIRED, broadcastIntentSlot.captured.action)
         assertSame(piMock, scheduler.setExactCalls.single().pendingIntent)
+    }
+
+    @Test
+    fun `restoreActiveAlarms aísla por fila si una reprogramacion falla`() = runTest {
+        // M5: si el sistema rechaza UNA fila (SecurityException/IAE), el resto se
+        // sigue reprogramando — antes la excepción abortaba el forEach completo.
+        val futureA = alarmEntity(
+            450, 7, 30,
+            trigger = fixedCalendar(2026, Calendar.JANUARY, 15, 7, 30).timeInMillis
+        )
+        val futureB = alarmEntity(
+            300, 8, 0,
+            trigger = fixedCalendar(2026, Calendar.JANUARY, 15, 8, 0).timeInMillis
+        )
+        coEvery { store.allAlarms() } returns listOf(futureA, futureB)
+        coEvery { store.upsertAlarm(any()) } returns Unit
+        coEvery { store.removeAlarm(any()) } returns Unit
+
+        // Scheduler que falla SOLO en la primera reprogramación (fila A).
+        val flaky = FakeAlarmScheduler(throwOnFirstSetExact = true)
+        val flakyAlarmAction = AlarmAction(
+            context = context,
+            store = store,
+            notifier = notifier,
+            alarmSchedulerProvider = { flaky },
+            now = { nowCal }
+        )
+
+        flakyAlarmAction.restoreActiveAlarms()
+
+        // La fila A NO se persiste (TOCTOU: setExact falló → sin upsert)...
+        coVerify(exactly = 0) { store.upsertAlarm(match { it.requestCode == 450 }) }
+        // ...pero la fila B SÍ se reprograma y persiste (aislamiento M5).
+        coVerify(exactly = 1) { store.upsertAlarm(match { it.requestCode == 300 }) }
+        val expectedB = fixedCalendar(2026, Calendar.JANUARY, 15, 8, 0).timeInMillis
+        assertEquals(listOf(expectedB), flaky.setExactCalls.map { it.triggerAtMillis })
     }
 
     // ===== Fábrica única de PendingIntent (QA #1) =====

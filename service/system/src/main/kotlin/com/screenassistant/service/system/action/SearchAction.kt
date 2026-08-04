@@ -30,6 +30,8 @@ class SearchAction @Inject constructor(
                     "Error: No encontré ningún archivo con ese nombre."
                 }
             } ?: "Error: No se pudo acceder a los archivos."
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            throw e  // B5: la cancelación nunca se traga
         } catch (e: Exception) {
             // No exponer la excepción cruda al usuario (O7)
             "Error: No se pudo buscar archivos."

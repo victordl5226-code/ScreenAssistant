@@ -2,6 +2,7 @@ package com.screenassistant.service.system.action
 
 import android.content.Context
 import android.media.AudioManager
+import android.os.Build
 import com.screenassistant.core.domain.model.VolumeAction
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -36,7 +37,11 @@ class SystemVolumeAction @Inject constructor(
     // Lambda inyectable: testabilidad total sin mockear AudioManager.
     private val volumeControllerProvider: () -> VolumeController = {
         AndroidVolumeController(context.getSystemService(Context.AUDIO_SERVICE) as AudioManager)
-    }
+    },
+    // M11: SDK inyectable — ADJUST_MUTE está deprecado en API 31+; el default
+    // consulta el SDK real y la prueba inyecta un valor fijo (mismo patrón que
+    // volumeControllerProvider).
+    private val sdkInt: () -> Int = { Build.VERSION.SDK_INT }
 ) {
     companion object {
         const val STEP = 5
@@ -69,10 +74,19 @@ class SystemVolumeAction @Inject constructor(
                     "Éxito: Volumen al mínimo."
                 }
                 VolumeAction.MUTE -> {
-                    controller.adjustStreamVolume(STREAM, AudioManager.ADJUST_MUTE, 0)
+                    // M11: ADJUST_MUTE deprecado en API 31+ → ADJUST_TOGGLE_MUTE
+                    // (comportamiento equivalente: alterna el silencio del stream).
+                    val direction = if (sdkInt() >= Build.VERSION_CODES.S) {
+                        AudioManager.ADJUST_TOGGLE_MUTE
+                    } else {
+                        AudioManager.ADJUST_MUTE
+                    }
+                    controller.adjustStreamVolume(STREAM, direction, 0)
                     "Éxito: Teléfono en silencio."
                 }
             }
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            throw e  // B5: la cancelación nunca se traga
         } catch (e: Exception) {
             "Error: No pude ajustar el volumen."
         }

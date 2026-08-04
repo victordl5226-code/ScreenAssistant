@@ -4,7 +4,6 @@ import android.content.Context
 import com.screenassistant.core.domain.model.SystemCommand
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
-import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
@@ -67,9 +66,11 @@ class NoteAction @Inject constructor(
             } else {
                 "Éxito: Nota guardada. Empieza así: «$excerpt»"
             }
-        } catch (e: IOException) {
-            "Error: No pude guardar la nota."
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            // B5: la cancelación nunca se traga (withContext(IO) es cancellable).
+            throw e
         } catch (e: Exception) {
+            // M25: IOException y Exception colapsados — mismo mensaje, un solo catch.
             "Error: No pude guardar la nota."
         }
     }
@@ -94,6 +95,8 @@ class NoteAction @Inject constructor(
                     }
                 }
             }
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            throw e  // B5: la cancelación nunca se traga
         } catch (e: Exception) {
             "Error: No pude leer las notas."
         }
@@ -110,10 +113,12 @@ class NoteAction @Inject constructor(
             withContext(Dispatchers.IO) {
                 val notes = listNotes(dir)
                 // Normalización LOCAL (ADR-003): no se reutiliza normalize del parser —
-                // core:domain no debe filtrarse a service:system, y aquí la normalización
-                // es para MATCH por substring, no para alineación de índices. Falso
-                // positivo aceptado por diseño: "pan" matchea "españa" (no usar match de
-                // palabra: rompería tildes/ñ, ADR-012).
+                // core:domain no debe filtrarse a service:system, y AQUÍ el contrato es
+                // MATCH por substring con colapso de espacios (el parser NO colapsa: su
+                // contrato es longitud invariante para índices). La duplicación está
+                // justificada por ese contrato distinto (ver KDoc de normalizeLocal).
+                // Falso positivo aceptado por diseño: "pan" matchea "españa" (no usar
+                // match de palabra: rompería tildes/ñ, ADR-012).
                 val normQuery = normalizeLocal(query)
                 val matches = notes.filter { normalizeLocal(it.readText(Charsets.UTF_8)).contains(normQuery) }
                 when {
@@ -122,6 +127,8 @@ class NoteAction @Inject constructor(
                     else -> readOne(matches.first(), query, matches.size)
                 }
             }
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            throw e  // B5: la cancelación nunca se traga
         } catch (e: Exception) {
             "Error: No pude leer las notas."
         }

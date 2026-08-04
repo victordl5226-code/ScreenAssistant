@@ -1,26 +1,41 @@
 package com.screenassistant.feature.chat
 
+import com.screenassistant.core.domain.model.AssistantLanguage
+import com.screenassistant.core.domain.model.ImageData
 import com.screenassistant.core.domain.repository.GeminiRepository
+import io.mockk.coEvery
+import io.mockk.coVerify
+import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 import org.junit.After
-import org.junit.Assert.*
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
+/**
+ * ChatViewModel con MockK (M26 — regla 6 del equipo: sin fakes manuales; los
+ * antiguos FakeGeminiRepository/FakeGeminiRepositoryThatFails se migraron a
+ * stubs de mockk). GeminiRepository se mockea y el flujo se verifica con
+ * coVerify; el dispatcher principal es el testDispatcher del test.
+ */
 @OptIn(ExperimentalCoroutinesApi::class)
 class ChatViewModelTest {
 
     private val testDispatcher = StandardTestDispatcher()
 
+    private lateinit var geminiRepository: GeminiRepository
+
     @Before
     fun setup() {
         Dispatchers.setMain(testDispatcher)
+        geminiRepository = mockk()
     }
 
     @After
@@ -28,14 +43,16 @@ class ChatViewModelTest {
         Dispatchers.resetMain()
     }
 
+    private fun createViewModel() = ChatViewModel(
+        geminiRepository = geminiRepository,
+        ioDispatcher = testDispatcher
+    )
+
     @Test
     fun `sendMessage adds user message and assistant response`() {
-        val fakeRepository = FakeGeminiRepository()
-        val viewModel = ChatViewModel(
-            geminiRepository = fakeRepository,
-            ioDispatcher = testDispatcher
-        )
+        coEvery { geminiRepository.sendMessage("Hola", null) } returns "Respuesta de prueba"
 
+        val viewModel = createViewModel()
         viewModel.onInputChanged("Hola")
         viewModel.sendMessage()
         testDispatcher.scheduler.advanceUntilIdle()
@@ -46,30 +63,22 @@ class ChatViewModelTest {
         assertTrue(messages[0].isFromUser)
         assertEquals("Respuesta de prueba", messages[1].text)
         assertFalse(messages[1].isFromUser)
+        coVerify(exactly = 1) { geminiRepository.sendMessage("Hola", null) }
     }
 
     @Test
     fun `sendMessage with blank input does nothing`() {
-        val fakeRepository = FakeGeminiRepository()
-        val viewModel = ChatViewModel(
-            geminiRepository = fakeRepository,
-            ioDispatcher = testDispatcher
-        )
-
+        val viewModel = createViewModel()
         viewModel.onInputChanged("   ")
         viewModel.sendMessage()
 
         assertTrue(viewModel.messages.value.isEmpty())
+        coVerify(exactly = 0) { geminiRepository.sendMessage(any(), any()) }
     }
 
     @Test
     fun `onInputChanged updates inputText`() {
-        val fakeRepository = FakeGeminiRepository()
-        val viewModel = ChatViewModel(
-            geminiRepository = fakeRepository,
-            ioDispatcher = testDispatcher
-        )
-
+        val viewModel = createViewModel()
         viewModel.onInputChanged("Prueba")
 
         assertEquals("Prueba", viewModel.inputText.value)
@@ -77,12 +86,9 @@ class ChatViewModelTest {
 
     @Test
     fun `sendMessage changes isLoading correctly`() {
-        val fakeRepository = FakeGeminiRepository()
-        val viewModel = ChatViewModel(
-            geminiRepository = fakeRepository,
-            ioDispatcher = testDispatcher
-        )
+        coEvery { geminiRepository.sendMessage("Hola", null) } returns "Respuesta de prueba"
 
+        val viewModel = createViewModel()
         viewModel.onInputChanged("Hola")
         viewModel.sendMessage()
         assertTrue(viewModel.isLoading.value)
@@ -93,12 +99,9 @@ class ChatViewModelTest {
 
     @Test
     fun `sendMessage handles error gracefully`() {
-        val failingRepository = FakeGeminiRepositoryThatFails()
-        val viewModel = ChatViewModel(
-            geminiRepository = failingRepository,
-            ioDispatcher = testDispatcher
-        )
+        coEvery { geminiRepository.sendMessage(any(), any()) } throws java.io.IOException("Error simulado de red")
 
+        val viewModel = createViewModel()
         viewModel.onInputChanged("Hola")
         viewModel.sendMessage()
         testDispatcher.scheduler.advanceUntilIdle()
@@ -106,33 +109,5 @@ class ChatViewModelTest {
         val messages = viewModel.messages.value
         assertEquals(2, messages.size)
         assertTrue(messages[1].text.contains("Error"))
-    }
-}
-
-class FakeGeminiRepository : GeminiRepository {
-    override suspend fun sendMessage(message: String, image: com.screenassistant.core.domain.model.ImageData?): String? {
-        return "Respuesta de prueba"
-    }
-
-    override fun streamMessage(message: String): Flow<String> {
-        return flowOf("Respuesta de prueba")
-    }
-
-    override fun setLanguage(language: com.screenassistant.core.domain.model.AssistantLanguage) {
-        // No-op: el fake no aplica el cambio de idioma
-    }
-}
-
-class FakeGeminiRepositoryThatFails : GeminiRepository {
-    override suspend fun sendMessage(message: String, image: com.screenassistant.core.domain.model.ImageData?): String? {
-        throw java.io.IOException("Error simulado de red")
-    }
-
-    override fun streamMessage(message: String): Flow<String> {
-        throw java.io.IOException("Error simulado de red")
-    }
-
-    override fun setLanguage(language: com.screenassistant.core.domain.model.AssistantLanguage) {
-        // No-op: el fake no aplica el cambio de idioma
     }
 }

@@ -3,6 +3,7 @@ package com.screenassistant.service.system.bridge
 import com.screenassistant.core.domain.action.SystemAction
 import com.screenassistant.core.domain.bridge.CommandBridge
 import com.screenassistant.core.domain.bridge.CommandClassifier
+import com.screenassistant.core.domain.bridge.ResultadoWire
 import com.screenassistant.core.domain.bridge.SystemCommandJsonCodec
 import com.screenassistant.core.domain.bridge.SystemCommandJsonCodec.Companion.CODIGO_FALLO_EJECUCION
 import com.screenassistant.core.domain.bridge.SystemCommandJsonCodec.RespuestaCodec
@@ -46,8 +47,20 @@ class SystemCommandBridgeImpl @Inject constructor(
 
         return try {
             when (val result = systemAction.execute(command)) {
-                is ActionResult.Success ->
-                    codec.encodeResult("ok", id, result.message, null, null)
+                is ActionResult.Success -> {
+                    // B7 (ADR-B7): el wire distingue el fallo FUNCIONAL (la acción
+                    // terminó pero devolvió "Error: ...", patrón ADR-009) del éxito
+                    // real. La rama Error ESTRUCTURAL de abajo permanece verbatim
+                    // con fallo_ejecucion (contrato de tests existentes).
+                    val resultado = ResultadoWire(ResultadoWire.estadoDe(result.message), result.message)
+                    if (resultado.estado == ResultadoWire.ERROR) {
+                        codec.encodeResult(
+                            resultado.estado, id, null, TaskerBridgeContract.CODIGO_FALLO_ACCION, resultado.mensaje
+                        )
+                    } else {
+                        codec.encodeResult(resultado.estado, id, resultado.mensaje, null, null)
+                    }
+                }
                 is ActionResult.Error ->
                     codec.encodeResult(
                         "error", id, null, CODIGO_FALLO_EJECUCION, "Error: ${result.reason}"

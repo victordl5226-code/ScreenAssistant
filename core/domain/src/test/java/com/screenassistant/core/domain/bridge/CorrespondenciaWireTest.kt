@@ -55,6 +55,9 @@ class CorrespondenciaWireTest {
         assertEquals(22, tabla.size)
         val wires = tabla.map { it.first }
         assertEquals(wires.size, wires.toSet().size)
+        // M4: guardián de ADICIONES — si se añade un wire al registro sin tocar la
+        // tabla, la igualdad contra todosLosWires falla en rojo (antes se pasaba).
+        assertEquals(AccionRegistry.todosLosWires, wires)
 
         for ((wire, envelope, comando) in tabla) {
             // Registro: biyección wire↔subtipo.

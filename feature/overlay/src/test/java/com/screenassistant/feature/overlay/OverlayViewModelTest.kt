@@ -138,7 +138,8 @@ class OverlayViewModelTest {
         assertEquals(false, viewModel.uiState.value.isLoading)
     }
 
-    // 4. Comando directo: no se llama a Gemini, pero sí se captura el contexto
+    // 4. Comando directo: no se llama a Gemini; M21: el texto SÍ se lee (barato,
+    // no bloquea) pero la CAPTURA de imagen se difiere (solo para Gemini).
     @Test
     fun `sendMessage con comando directo no llama a Gemini`() {
         every { commandParser.parse(any()) } returns "Resultado"
@@ -148,8 +149,8 @@ class OverlayViewModelTest {
 
         assertEquals("Resultado", viewModel.uiState.value.assistantText)
         coVerify(exactly = 0) { geminiRepository.sendMessage(any(), any()) }
-        // El contexto de pantalla SÍ se captura antes de parsear
-        coVerify(exactly = 1) { captureScreenContextUseCase.captureScreenshot() }
+        // M21: el comando directo NO captura imagen (antes se capturaba siempre).
+        coVerify(exactly = 0) { captureScreenContextUseCase.captureScreenshot() }
         verify(exactly = 1) { captureScreenContextUseCase.getScreenText() }
     }
 
@@ -311,6 +312,17 @@ class OverlayViewModelTest {
         assertEquals(AnimationState.IDLE, viewModel.uiState.value.animationState)
         assertEquals(AnimationState.IDLE, viewModel.characterState.animationState)
         assertNotEquals(resBefore, viewModel.characterState.currentAssetRes)
+    }
+
+    // 16b. M16: el índice del UI usa módulo como CharacterState (antes crecía sin límite)
+    @Test
+    fun `changeOutfit vuelve a 0 tras un ciclo completo de atuendos`() {
+        repeat(viewModel.characterState.outfitCount) { viewModel.changeOutfit() }
+
+        // Un ciclo completo: índice 10 → 0 (con el código antiguo sería 10 y la
+        // sincronía con el atuendo real se rompería).
+        assertEquals(0, viewModel.uiState.value.currentOutfitIndex)
+        assertEquals(AnimationState.IDLE, viewModel.uiState.value.animationState)
     }
 
     // 17. onCleared con TTS/STT asignados: destruye ambos

@@ -264,23 +264,21 @@ object AppModule {
     @Singleton
     fun provideNoteAction(@ApplicationContext context: Context): NoteAction = NoteAction(context)
 
-    // ApiKeyProvider with initial key from BuildConfig
+    // ApiKeyProvider: la siembra inicial desde BuildConfig se movió a
+    // ScreenAssistantApp.onCreate (B4, Lote 8) — Dagger es lazy y el primer
+    // @Provides se disparaba en la primera inyección, no en el arranque.
     @Provides
     @Singleton
     fun provideApiKeyProvider(@ApplicationContext context: Context): ApiKeyProvider {
-        val provider = ApiKeyProvider(context)
-        // Cargar la API key desde BuildConfig si no existe ya almacenada
-        if (provider.getApiKey().isBlank()) {
-            val buildConfigKey = try {
-                com.screenassistant.BuildConfig.GEMINI_API_KEY
-            } catch (e: Exception) {
-                ""
-            }
-            if (buildConfigKey.isNotBlank()) {
-                provider.storeApiKey(buildConfigKey)
-            }
-        }
-        return provider
+        return ApiKeyProvider(context)
+    }
+
+    // B3 (Lote 8): captura de pantalla delegada al servicio de accesibilidad vía
+    // interfaz de core:domain (core:data no conoce service:system).
+    @Provides
+    @Singleton
+    fun provideScreenCaptureProvider(): com.screenassistant.core.domain.repository.ScreenCaptureProvider {
+        return com.screenassistant.service.system.bridge.ServiceScreenCaptureProvider
     }
 
     // GeminiRepository (interfaz domain) → GeminiRepository (data)

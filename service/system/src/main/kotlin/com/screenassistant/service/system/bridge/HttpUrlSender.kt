@@ -15,18 +15,26 @@ import java.net.URL
  * de la corrutina hermana del goAsync.
  */
 class HttpUrlSender : UrlSender {
-    override suspend fun enviar(url: String): Boolean = try {
-        val conexion = (URL(url).openConnection() as HttpURLConnection).apply {
-            requestMethod = "GET"
-            connectTimeout = 5_000
-            readTimeout = 5_000
+    override suspend fun enviar(url: String): Boolean {
+        var conexion: HttpURLConnection? = null
+        return try {
+            conexion = (URL(url).openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = 5_000
+                readTimeout = 5_000
+            }
+            conexion.responseCode in 200..299
+        } catch (e: Exception) {
+            // M7: NUNCA se loguea e.message — MalformedURLException (y otros) incluye
+            // la URL COMPLETA, que puede contener la key de AutoRemote (secreto F3).
+            // Solo la clase del error (o mensaje fijo), jamás datos del callback.
+            Log.w(TAG, "Error enviando URL callback de AutoRemote: ${e.javaClass.simpleName}")
+            false
+        } finally {
+            // M7: disconnect() SIEMPRE, incluso si responseCode lanza (antes: fuga
+            // de socket en el camino de error).
+            conexion?.disconnect()
         }
-        val ok = conexion.responseCode in 200..299
-        conexion.disconnect()
-        ok
-    } catch (e: Exception) {
-        Log.w(TAG, "Error enviando URL callback de AutoRemote: ${e.message}")
-        false
     }
 
     private companion object {

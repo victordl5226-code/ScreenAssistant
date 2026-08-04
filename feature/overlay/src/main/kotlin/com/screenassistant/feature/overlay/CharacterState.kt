@@ -132,6 +132,10 @@ class CharacterState {
     var animationState by mutableStateOf(AnimationState.IDLE)
     var assistantText by mutableStateOf("")
 
+    /** M16 (Lote 8): número de atuendos de la biblioteca — el ViewModel lo usa
+     *  para el módulo del índice del UI (fuente única: library.size). */
+    val outfitCount: Int get() = library.size
+
     // Resolución de imagen con prioridad en el cambio de ropa
     val currentAssetRes: Int
         get() {

@@ -18,7 +18,7 @@ import androidx.savedstate.SavedStateRegistry
 import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
-import androidx.work.*
+import androidx.work.WorkManager
 import com.screenassistant.core.domain.di.IoDispatcher
 import com.screenassistant.core.domain.repository.ConversationRepository
 import com.screenassistant.core.domain.repository.GeminiRepository
@@ -30,7 +30,6 @@ import com.screenassistant.feature.overlay.AssistantOverlayUI
 import com.screenassistant.feature.overlay.OverlayViewModel
 import com.screenassistant.feature.overlay.OverlayWindowManager
 import dagger.hilt.android.AndroidEntryPoint
-import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineDispatcher
 
@@ -80,7 +79,7 @@ class AssistantOverlayService : LifecycleService(), ViewModelStoreOwner, SavedSt
         super.onCreate()
 
         startForegroundService()
-        scheduleConnectivityWorker()
+        cancelConnectivityWorkerZombie()
 
         try {
             windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
@@ -92,20 +91,16 @@ class AssistantOverlayService : LifecycleService(), ViewModelStoreOwner, SavedSt
         }
     }
 
-    private fun scheduleConnectivityWorker() {
-        val constraints = Constraints.Builder()
-            .setRequiredNetworkType(NetworkType.CONNECTED)
-            .build()
-
-        val request = PeriodicWorkRequestBuilder<ConnectivityWorker>(1, TimeUnit.HOURS)
-            .setConstraints(constraints)
-            .build()
-
-        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
-            "connectivity_worker",
-            ExistingPeriodicWorkPolicy.KEEP,
-            request
-        )
+    /**
+     * M22: el trabajo periódico que instalaciones ANTERIORES dejaron encolado bajo
+     * "connectivity_worker" apunta a ConnectivityWorker (clase ELIMINADA en el Lote 8):
+     * sin esta cancelación, WorkManager reintentaría cada hora un worker inexistente
+     * (work zombie). Cancelación ÚNICA por nombre — no-op seguro si nunca se programó.
+     */
+    private fun cancelConnectivityWorkerZombie() {
+        runCatching {
+            WorkManager.getInstance(this).cancelUniqueWork("connectivity_worker")
+        }
     }
 
     private fun startForegroundService() {
@@ -115,17 +110,17 @@ class AssistantOverlayService : LifecycleService(), ViewModelStoreOwner, SavedSt
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 channelId,
-                "Assistant Overlay",
+                getString(R.string.service_channel_name),
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "Mantiene el asistente flotante activo"
+                description = getString(R.string.service_channel_description)
             }
             notificationManager.createNotificationChannel(channel)
         }
 
         val notification: Notification = NotificationCompat.Builder(this, channelId)
-            .setContentTitle("Screen Assistant")
-            .setContentText("El asistente está activo y listo para ayudar.")
+            .setContentTitle(getString(R.string.service_notification_title))
+            .setContentText(getString(R.string.service_notification_text))
             .setSmallIcon(android.R.drawable.ic_menu_info_details)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setCategory(Notification.CATEGORY_SERVICE)

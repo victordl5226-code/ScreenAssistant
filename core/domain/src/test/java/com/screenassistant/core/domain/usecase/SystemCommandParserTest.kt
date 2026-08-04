@@ -81,11 +81,47 @@ class SystemCommandParserTest {
 
     @Test
     fun `parse devuelve prefijo Error cuando la accion falla`() {
-        coEvery { systemAction.execute(any()) } returns ActionResult.Error("no pude llamar")
+        // M26: stub TIPADO (antes coEvery(any()) no detectaba ramas no ejecutadas).
+        coEvery { systemAction.execute(SystemCommand.Call("Ana")) } returns
+            ActionResult.Error("no pude llamar")
 
         val result = parser.parse("llama a Ana")
 
         assertEquals("Error: no pude llamar", result)
+        // El stub TIPADO ya es la aserción fuerte: si el parser ejecutara otra
+        // acción (SearchGoogle/OpenApp), MockK lanzaría "no answer found" → rojo.
+        coVerify { systemAction.execute(SystemCommand.Call("Ana")) }
+    }
+
+    // ===== M26: casos de voz reales — comportamiento FIJADO (null → Gemini) =====
+
+    @Test
+    fun `parse a las 7 y media suelto devuelve null y no ejecuta ninguna accion`() {
+        // Respuesta a "¿a qué hora?" SIN la palabra "alarma": no es un comando
+        // (solo la rama alarma usa el TimePhraseParser) → se delega a Gemini.
+        val result = parser.parse("a las 7 y media")
+
+        assertNull(result)
+        coVerify(exactly = 0) { systemAction.execute(any()) }
+    }
+
+    @Test
+    fun `parse temporizador de 5 sin unidad devuelve null y no ejecuta ninguna accion`() {
+        // "temporizador de 5" sin unidad de duración: la rama 7 exige unidad
+        // (minutos/segundos/horas) → no es un comando fiable → Gemini.
+        val result = parser.parse("temporizador de 5")
+
+        assertNull(result)
+        coVerify(exactly = 0) { systemAction.execute(any()) }
+    }
+
+    @Test
+    fun `parse las 7 suelto devuelve null y no ejecuta ninguna accion`() {
+        // Hora suelta sin verbo ni contexto: no matchea ningún prefijo → Gemini.
+        val result = parser.parse("las 7")
+
+        assertNull(result)
+        coVerify(exactly = 0) { systemAction.execute(any()) }
     }
 
     // ===== Tests de la liquidación de deuda técnica (abre/abrir + fixes de case y 'r' colgante) =====
@@ -1009,6 +1045,74 @@ class SystemCommandParserTest {
         assertEquals("Abriendo alarmas...", result)
         coVerify { systemAction.execute(SystemCommand.OpenAlarms) }
         coVerify(exactly = 0) { systemAction.execute(SystemCommand.SetAlarm(0, 0, "nunca")) }
+    }
+
+    // ===== B1: alarma precedida de "la" (bug del backlog: "pon la alarma a las 7" → OpenAlarms) =====
+    // El anchor (las|la) de TimePhraseParser capturaba el "la" del sustantivo y trataba
+    // "alarma..." como palabra de hora → null → OpenAlarms. Fix: buscar la hora solo
+    // sobre el subtexto posterior a "alarma" (mismo patrón que la rama 11b).
+
+    @Test
+    fun `parse pon la alarma a las 7 ejecuta SetAlarm 7 0 y no OpenAlarms`() {
+        coEvery { systemAction.execute(SystemCommand.SetAlarm(7, 0, null)) } returns
+            ActionResult.Success("Alarma a las 7:00.")
+
+        val result = parser.parse("pon la alarma a las 7")
+
+        assertEquals("Alarma a las 7:00.", result)
+        coVerify { systemAction.execute(SystemCommand.SetAlarm(7, 0, null)) }
+        // Bug del backlog: hoy esta frase ejecutaba OpenAlarms
+        coVerify(exactly = 0) { systemAction.execute(SystemCommand.OpenAlarms) }
+    }
+
+    @Test
+    fun `parse la alarma de las 7 30 ejecuta SetAlarm 7 30`() {
+        coEvery { systemAction.execute(SystemCommand.SetAlarm(7, 30, null)) } returns
+            ActionResult.Success("Alarma a las 7:30.")
+
+        val result = parser.parse("la alarma de las 7:30")
+
+        assertEquals("Alarma a las 7:30.", result)
+        coVerify { systemAction.execute(SystemCommand.SetAlarm(7, 30, null)) }
+        coVerify(exactly = 0) { systemAction.execute(SystemCommand.OpenAlarms) }
+    }
+
+    @Test
+    fun `parse activa la alarma a las 7 30 ejecuta SetAlarm 7 30`() {
+        coEvery { systemAction.execute(SystemCommand.SetAlarm(7, 30, null)) } returns
+            ActionResult.Success("Alarma a las 7:30.")
+
+        val result = parser.parse("activa la alarma a las 7:30")
+
+        assertEquals("Alarma a las 7:30.", result)
+        coVerify { systemAction.execute(SystemCommand.SetAlarm(7, 30, null)) }
+        coVerify(exactly = 0) { systemAction.execute(SystemCommand.OpenAlarms) }
+    }
+
+    @Test
+    fun `parse pon la alarma para las 8 ejecuta SetAlarm 8 0 sin etiqueta`() {
+        coEvery { systemAction.execute(SystemCommand.SetAlarm(8, 0, null)) } returns
+            ActionResult.Success("Alarma a las 8:00.")
+
+        val result = parser.parse("pon la alarma para las 8")
+
+        assertEquals("Alarma a las 8:00.", result)
+        // El "para" ANTERIOR a la hora no es etiqueta: la etiqueta solo se re-ancla
+        // sobre el subtexto posterior a "alarma" y DESPUÉS del match de hora.
+        coVerify { systemAction.execute(SystemCommand.SetAlarm(8, 0, null)) }
+        coVerify(exactly = 0) { systemAction.execute(SystemCommand.SetAlarm(8, 0, "las 8")) }
+    }
+
+    @Test
+    fun `parse pon una alarma para las 7 30 para despertarme ejecuta SetAlarm 7 30 con etiqueta`() {
+        coEvery { systemAction.execute(SystemCommand.SetAlarm(7, 30, "despertarme")) } returns
+            ActionResult.Success("Alarma a las 7:30.")
+
+        val result = parser.parse("pon una alarma para las 7:30 para despertarme")
+
+        assertEquals("Alarma a las 7:30.", result)
+        // Regresión del re-anclaje: el primer "para" tras el match de hora gana.
+        coVerify { systemAction.execute(SystemCommand.SetAlarm(7, 30, "despertarme")) }
     }
 
     // ===== O4: cancelar alarma (rama 11b, precedencia sobre la rama alarma) =====

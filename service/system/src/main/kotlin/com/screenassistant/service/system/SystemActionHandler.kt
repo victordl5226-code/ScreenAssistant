@@ -69,6 +69,11 @@ class SystemActionHandler @Inject constructor(
                 is SystemCommand.ReadNote -> noteAction.readNote(command.query)
             }
             ActionResult.Success(message)
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            // B5: la cancelación de la corrutina (p.ej. al cerrar el overlay mientras
+            // se ejecuta una acción) se RE-LANZA siempre — tragar la cancelación
+            // dejaría la corrutina viva. Contrato del repo.
+            throw e
         } catch (e: Exception) {
             ActionResult.Error(e.message ?: "Error desconocido")
         }

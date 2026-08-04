@@ -8,7 +8,6 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
@@ -33,6 +32,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -49,6 +49,35 @@ import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+
+    // M14: cadena de permisos — launchers a nivel de Activity (registerForActivityResult)
+    // para poder CONTINUAR la cadena desde onResume al volver de Settings de superposición
+    // sin depender del estado de composición.
+    private var startPending = false
+
+    private val micPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            startAssistantService()
+        }
+    }
+
+    private val multiplePermissionsLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) {
+        // Just log or update UI if needed
+    }
+
+    private val notificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) {
+        // M14: tras el diálogo de notificaciones (concedido O denegado — en 13+ el FGS
+        // arranca aunque la notificación no sea visible) la cadena CONTINÚA: se pasa a
+        // la siguiente etapa (superposición) en vez de abortar el arranque.
+        requestOverlayOrContinue()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -60,44 +89,12 @@ class MainActivity : ComponentActivity() {
                 val puenteViewModel: PuenteSettingsViewModel = hiltViewModel()
                 val puenteUiState by puenteViewModel.uiState.collectAsState()
 
-                val micPermissionLauncher = rememberLauncherForActivityResult(
-                    ActivityResultContracts.RequestPermission()
-                ) { isGranted ->
-                    if (isGranted) {
-                        startAssistantService()
-                    }
-                }
-
-                val multiplePermissionsLauncher = rememberLauncherForActivityResult(
-                    ActivityResultContracts.RequestMultiplePermissions()
-                ) { permissions ->
-                    // Just log or update UI if needed
-                }
-
-                val notificationPermissionLauncher = rememberLauncherForActivityResult(
-                    ActivityResultContracts.RequestPermission()
-                ) { /* Just permissions, don't trigger service yet */ }
-
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
                     MainScreen(
                         modifier = Modifier.padding(innerPadding),
-                        onStartService = {
-                            checkAndStartService(notificationPermissionLauncher, micPermissionLauncher)
-                        },
+                        onStartService = { checkAndStartService() },
                         onStopService = { stopAssistantService() },
-                        onRequestExtraPermissions = {
-                            val perms = mutableListOf(
-                                Manifest.permission.READ_CONTACTS,
-                                Manifest.permission.CALL_PHONE,
-                                Manifest.permission.SEND_SMS
-                            )
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                perms.add(Manifest.permission.READ_MEDIA_IMAGES)
-                            } else {
-                                perms.add(Manifest.permission.READ_EXTERNAL_STORAGE)
-                            }
-                            multiplePermissionsLauncher.launch(perms.toTypedArray())
-                        },
+                        onRequestExtraPermissions = { requestExtraPermissions() },
                         apiKeyUiState = apiKeyUiState,
                         onApiKeyInputChange = apiKeyViewModel::onInputChange,
                         onApiKeySave = apiKeyViewModel::saveKey,
@@ -115,19 +112,45 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun checkAndStartService(
-        notifLauncher: androidx.activity.result.ActivityResultLauncher<String>,
-        micLauncher: androidx.activity.result.ActivityResultLauncher<String>
-    ) {
+    override fun onResume() {
+        super.onResume()
+        // M14: al volver de Settings de superposición con el permiso ya concedido, la
+        // cadena continúa AUTOMÁTICAMENTE (sin pedir otra pulsación de "Start").
+        if (startPending && Settings.canDrawOverlays(this)) {
+            requestMicOrStart()
+        }
+    }
+
+    private fun requestExtraPermissions() {
+        val perms = mutableListOf(
+            Manifest.permission.READ_CONTACTS,
+            Manifest.permission.CALL_PHONE,
+            Manifest.permission.SEND_SMS
+        )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            perms.add(Manifest.permission.READ_MEDIA_IMAGES)
+        } else {
+            perms.add(Manifest.permission.READ_EXTERNAL_STORAGE)
+        }
+        multiplePermissionsLauncher.launch(perms.toTypedArray())
+    }
+
+    /** Punto de entrada de la cadena de permisos (1 pulsación de "Start"). */
+    private fun checkAndStartService() {
         // 1. Notificaciones (Android 13+)
         if (Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-            notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
             return
         }
+        requestOverlayOrContinue()
+    }
 
-        // 2. Superposición
+    /** M14 etapa 2: superposición — si falta, marca startPending y abre Settings;
+     *  onResume continúa la cadena al volver con canDrawOverlays=true. */
+    private fun requestOverlayOrContinue() {
         if (!Settings.canDrawOverlays(this)) {
+            startPending = true
             val intent = Intent(
                 Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
                 Uri.parse("package:$packageName")
@@ -135,11 +158,15 @@ class MainActivity : ComponentActivity() {
             startActivity(intent)
             return
         }
+        requestMicOrStart()
+    }
 
-        // 3. Micrófono
+    /** M14 etapa 3: micrófono — si ya está concedido, arranca el servicio directo. */
+    private fun requestMicOrStart() {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            micLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
         } else {
+            startPending = false
             startAssistantService()
         }
     }
@@ -193,7 +220,7 @@ fun MainScreen(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
-            text = "Screen Assistant Setup",
+            text = stringResource(R.string.setup_title),
             style = MaterialTheme.typography.headlineMedium,
             modifier = Modifier.padding(16.dp)
         )
@@ -207,7 +234,11 @@ fun MainScreen(
             modifier = Modifier.padding(horizontal = 16.dp)
         ) {
             Text(
-                text = if (isAccessibilityEnabled) "✓ Contexto de pantalla activo" else "⚠ Contexto de pantalla desactivado",
+                text = if (isAccessibilityEnabled) {
+                    stringResource(R.string.setup_status_active)
+                } else {
+                    stringResource(R.string.setup_status_inactive)
+                },
                 modifier = Modifier.padding(12.dp),
                 style = MaterialTheme.typography.bodyMedium
             )
@@ -242,7 +273,7 @@ fun MainScreen(
         Spacer(modifier = Modifier.height(32.dp))
 
         Button(onClick = onStartService) {
-            Text("Start Floating Assistant")
+            Text(stringResource(R.string.start_assistant))
         }
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -251,19 +282,19 @@ fun MainScreen(
             val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
             context.startActivity(intent)
         }) {
-            Text("Enable Screen Context (Accessibility)")
+            Text(stringResource(R.string.enable_accessibility))
         }
 
         Spacer(modifier = Modifier.height(16.dp))
 
         Button(onClick = onRequestExtraPermissions) {
-            Text("Grant Offline Features Permissions")
+            Text(stringResource(R.string.setup_grant_offline_permissions))
         }
 
         Spacer(modifier = Modifier.height(16.dp))
 
         Button(onClick = onStopService) {
-            Text("Stop Floating Assistant")
+            Text(stringResource(R.string.stop_assistant))
         }
     }
 }

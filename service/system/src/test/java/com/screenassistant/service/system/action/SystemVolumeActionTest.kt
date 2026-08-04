@@ -2,6 +2,7 @@ package com.screenassistant.service.system.action
 
 import android.content.Context
 import android.media.AudioManager
+import android.os.Build
 import com.screenassistant.core.domain.model.VolumeAction
 import io.mockk.every
 import io.mockk.mockk
@@ -69,12 +70,36 @@ class SystemVolumeActionTest {
     }
 
     @Test
-    fun `MUTE silencia el stream de musica`() {
-        val result = action.setVolume(VolumeAction.MUTE)
+    fun `MUTE en API 30 usa ADJUST_MUTE`() {
+        // M11: en API < 31 se mantiene ADJUST_MUTE (aún no deprecado).
+        val actionApi30 = SystemVolumeAction(
+            context = mockk(relaxed = true),
+            volumeControllerProvider = { volumeController },
+            sdkInt = { Build.VERSION_CODES.R }
+        )
+
+        val result = actionApi30.setVolume(VolumeAction.MUTE)
 
         assertEquals("Éxito: Teléfono en silencio.", result)
         verify {
             volumeController.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_MUTE, 0)
+        }
+    }
+
+    @Test
+    fun `MUTE en API 31 usa ADJUST_TOGGLE_MUTE`() {
+        // M11: ADJUST_MUTE deprecado en API 31+ → ADJUST_TOGGLE_MUTE.
+        val actionApi31 = SystemVolumeAction(
+            context = mockk(relaxed = true),
+            volumeControllerProvider = { volumeController },
+            sdkInt = { Build.VERSION_CODES.S }
+        )
+
+        val result = actionApi31.setVolume(VolumeAction.MUTE)
+
+        assertEquals("Éxito: Teléfono en silencio.", result)
+        verify {
+            volumeController.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_TOGGLE_MUTE, 0)
         }
     }
 

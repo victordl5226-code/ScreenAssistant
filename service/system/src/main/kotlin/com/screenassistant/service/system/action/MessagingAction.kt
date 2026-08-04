@@ -25,6 +25,8 @@ class MessagingAction @Inject constructor(
             } else {
                 "Error: WhatsApp no parece estar instalado."
             }
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            throw e  // B5: la cancelación nunca se traga
         } catch (e: Exception) {
             "Error: No se pudo abrir WhatsApp."
         }
@@ -52,6 +54,8 @@ class MessagingAction @Inject constructor(
             }
             context.startActivity(intent)
             "Éxito: Abriendo WhatsApp para enviar mensaje a $contactName."
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            throw e  // B5: la cancelación nunca se traga
         } catch (e: Exception) {
             "Error: No pude abrir WhatsApp."
         }

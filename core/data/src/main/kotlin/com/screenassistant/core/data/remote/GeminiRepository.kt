@@ -16,6 +16,7 @@ import com.screenassistant.core.domain.model.ImageData
 import com.screenassistant.core.domain.model.SystemCommand
 import com.screenassistant.core.domain.repository.MemoryRepository
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.mapNotNull
 import javax.inject.Inject
@@ -234,14 +235,21 @@ class GeminiRepository @Inject constructor(
                                 }
                             }
                             "set_alarm" -> {
-                                val h = call.args["hour"]?.toIntOrNull() ?: 0
-                                val m = call.args["minute"]?.toIntOrNull() ?: 0
-                                val actionResult = systemAction.execute(
-                                    SystemCommand.SetAlarm(h, m, call.args["label"])
-                                )
-                                when (actionResult) {
-                                    is ActionResult.Success -> actionResult.message
-                                    is ActionResult.Error -> actionResult.reason
+                                // B2: args inválidos (no numéricos o fuera de rango) →
+                                // error claro SIN ejecutar la acción. Antes el fallback a 0
+                                // programaba una alarma a las 0:00 silenciosamente.
+                                val h = call.args["hour"]?.toIntOrNull()
+                                val m = call.args["minute"]?.toIntOrNull()
+                                if (h == null || m == null || h !in 0..23 || m !in 0..59) {
+                                    "Error: Hora o minuto inválidos."
+                                } else {
+                                    val actionResult = systemAction.execute(
+                                        SystemCommand.SetAlarm(h, m, call.args["label"])
+                                    )
+                                    when (actionResult) {
+                                        is ActionResult.Success -> actionResult.message
+                                        is ActionResult.Error -> actionResult.reason
+                                    }
                                 }
                             }
                             "search_google" -> {
@@ -335,6 +343,17 @@ class GeminiRepository @Inject constructor(
         }
         return try {
             currentChat(apiKey)?.sendMessageStream(message)?.mapNotNull { it.text }
+                // M3: el try/catch exterior solo cubre la CONSTRUCCIÓN del flujo; un
+                // IOException de red durante la RECOLECCIÓN se captura aquí (emit en
+                // lugar de propagar). El resto (incluida CancellationException) se
+                // RE-LANZA — contrato del repo.
+                ?.catch { e: Throwable ->
+                    if (e is java.io.IOException) {
+                        emit("Error en streaming: ${e.message}")
+                    } else {
+                        throw e
+                    }
+                }
                 ?: kotlinx.coroutines.flow.flowOf("No pude inicializar el modelo de IA.")
         } catch (e: Exception) {
             kotlinx.coroutines.flow.flowOf("Error en streaming: ${e.message}")

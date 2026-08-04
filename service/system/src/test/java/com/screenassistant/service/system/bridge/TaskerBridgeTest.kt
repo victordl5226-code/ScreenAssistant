@@ -319,4 +319,52 @@ class TaskerBridgeTest {
         assertEquals("t-9", obj["id"]?.jsonPrimitive?.contentOrNull)
         coVerify(exactly = 1) { systemAction.execute(SystemCommand.OpenAlarms) }
     }
+
+    // ===== B7 (ADR-B7): fallo FUNCIONAL vs éxito real (solo rama Success) =====
+
+    @Test
+    fun `Success con mensaje de error devuelve fallo_accion con el mensaje verbatim`() = runTest {
+        // La acción se ejecutó pero devolvió "Error: ..." (ADR-009) — el wire debe
+        // informar fallo_accion, no éxito. La rama Error estructural NO cambia.
+        coEvery { systemAction.execute(any()) } returns
+            ActionResult.Success("Error: No encontré ninguna aplicación llamada 'x'.")
+        val respuesta = handle("""{"version":1,"id":"t-20","accion":"abrir_app","aplicacion":"x"}""")
+        val obj = json.parseToJsonElement(respuesta).jsonObject
+        assertEquals("error", obj["estado"]?.jsonPrimitive?.contentOrNull)
+        assertEquals("fallo_accion", obj["error"]?.jsonPrimitive?.contentOrNull)
+        assertEquals("Error: No encontré ninguna aplicación llamada 'x'.", obj["mensaje"]?.jsonPrimitive?.contentOrNull)
+        assertEquals("t-20", obj["id"]?.jsonPrimitive?.contentOrNull)
+    }
+
+    @Test
+    fun `Success con mensaje de error emite resultado null literal`() = runTest {
+        coEvery { systemAction.execute(any()) } returns
+            ActionResult.Success("Error: No hay alarmas que cancelar.")
+        val respuesta = handle("""{"version":1,"accion":"cancelar_alarma"}""")
+        assertTrue("el fallo funcional debe emitir \"resultado\":null literal: $respuesta", respuesta.contains("\"resultado\":null"))
+        val obj = json.parseToJsonElement(respuesta).jsonObject
+        assertEquals(null, obj["resultado"]?.jsonPrimitive?.contentOrNull)
+    }
+
+    @Test
+    fun `Success con error en minusculas se trata como ok por case sensitive`() = runTest {
+        // "error: ..." NO es el prefijo ADR-009 exacto → contenido, no fallo.
+        coEvery { systemAction.execute(any()) } returns
+            ActionResult.Success("error: algo salió mal")
+        val respuesta = handle("""{"version":1,"accion":"leer_notas"}""")
+        val obj = json.parseToJsonElement(respuesta).jsonObject
+        assertEquals("ok", obj["estado"]?.jsonPrimitive?.contentOrNull)
+        assertEquals("error: algo salió mal", obj["resultado"]?.jsonPrimitive?.contentOrNull)
+    }
+
+    @Test
+    fun `Success con Error sin prefijo exacto se trata como ok`() = runTest {
+        // "Error de conexión" (sin ": ") no matchea "Error: " → éxito con contenido.
+        coEvery { systemAction.execute(any()) } returns
+            ActionResult.Success("Error de conexión inesperado")
+        val respuesta = handle("""{"version":1,"accion":"leer_nota","busqueda":"pan"}""")
+        val obj = json.parseToJsonElement(respuesta).jsonObject
+        assertEquals("ok", obj["estado"]?.jsonPrimitive?.contentOrNull)
+        assertEquals("Error de conexión inesperado", obj["resultado"]?.jsonPrimitive?.contentOrNull)
+    }
 }
