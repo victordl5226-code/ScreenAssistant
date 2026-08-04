@@ -19,7 +19,9 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.mapNotNull
 import javax.inject.Inject
 
-class GeminiRepository @Inject constructor(
+// M24 (Lote 10): renombrado a *Impl — un nombre = un concepto (precedente
+// ScreenContextRepositoryImpl). La interfaz vive en core:domain/repository.
+class GeminiRepositoryImpl @Inject constructor(
     private val apiKeyProvider: com.screenassistant.core.data.util.ApiKeyProvider,
     private val systemAction: SystemAction,
     private val memoryRepository: MemoryRepository,

@@ -70,7 +70,10 @@ class NoteAction @Inject constructor(
             // B5: la cancelación nunca se traga (withContext(IO) es cancellable).
             throw e
         } catch (e: Exception) {
-            // M25: IOException y Exception colapsados — mismo mensaje, un solo catch.
+            // M25 (Lote 8): IOException y Exception colapsados — mismo mensaje, un solo
+            // catch. M25-KDoc (Lote 10): se MANTIENE aunque `e` no se usa — el catch
+            // es la red de IO real (writeText), no código muerto; el veto del Arquitecto
+            // impide "optimizarlo" a un catch desnudo sin el tipo de excepción anotado.
             "Error: No pude guardar la nota."
         }
     }
@@ -112,11 +115,15 @@ class NoteAction @Inject constructor(
         return try {
             withContext(Dispatchers.IO) {
                 val notes = listNotes(dir)
-                // Normalización LOCAL (ADR-003): no se reutiliza normalize del parser —
-                // core:domain no debe filtrarse a service:system, y AQUÍ el contrato es
-                // MATCH por substring con colapso de espacios (el parser NO colapsa: su
-                // contrato es longitud invariante para índices). La duplicación está
-                // justificada por ese contrato distinto (ver KDoc de normalizeLocal).
+                // Normalización LOCAL (ADR-003, M23 Lote 10): NO se reutiliza normalize
+                // del parser. OJO: la razón NO es de capas — service:system SÍ depende de
+                // core:domain (SystemCommandParser, SystemCommand, ActionResult...). El
+                // motivo real es de CONTRATO: normalize es LONGITUD INVARIANTE (índices
+                // 1:1 para extractAfterPrefix; conserva ':' para TimePhraseParser) y AQUÍ
+                // se necesita MATCH por substring con colapso de espacios (artefacto del
+                // dictado) + trim. Duplicación aceptada hasta un TERCER consumidor (hoy:
+                // 2 — parser.normalize y normalizeLocal); si aparece, extraer a un util
+                // compartido en core:domain.
                 // Falso positivo aceptado por diseño: "pan" matchea "españa" (no usar
                 // match de palabra: rompería tildes/ñ, ADR-012).
                 val normQuery = normalizeLocal(query)

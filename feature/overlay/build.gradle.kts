@@ -55,8 +55,8 @@ dependencies {
     implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("io.coil-kt:coil-gif:2.7.0")
 
-    // Testing
-    testImplementation("junit:junit:4.13.2")
-    testImplementation("io.mockk:mockk:1.13.12")
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
+    // Testing — M24: version catalog
+    testImplementation(libs.junit)
+    testImplementation(libs.mockk)
+    testImplementation(libs.coroutines.test)
 }

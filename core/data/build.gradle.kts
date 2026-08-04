@@ -28,11 +28,10 @@ dependencies {
 
     implementation("androidx.core:core-ktx:1.15.0")
 
-    // Room
-    val roomVersion = "2.6.1"
-    implementation("androidx.room:room-runtime:$roomVersion")
-    implementation("androidx.room:room-ktx:$roomVersion")
-    ksp("androidx.room:room-compiler:$roomVersion")
+    // Room — M24: version catalog (2.6.1 sin bump)
+    implementation(libs.room.runtime)
+    implementation(libs.room.ktx)
+    ksp(libs.room.compiler)
 
     // Gemini
     implementation("com.google.ai.client.generativeai:generativeai:0.9.0")
@@ -51,9 +50,9 @@ dependencies {
     // WorkManager
     implementation("androidx.work:work-runtime-ktx:2.10.0")
 
-    // Testing
-    testImplementation("junit:junit:4.13.2")
-    testImplementation("io.mockk:mockk:1.13.12")
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
+    // Testing — M24: version catalog
+    testImplementation(libs.junit)
+    testImplementation(libs.mockk)
+    testImplementation(libs.coroutines.test)
     testImplementation("org.json:json:20240303")
 }

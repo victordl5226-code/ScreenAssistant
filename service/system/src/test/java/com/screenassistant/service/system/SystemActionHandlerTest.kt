@@ -89,13 +89,14 @@ class SystemActionHandlerTest {
     }
 
     // 2. launchApp lanza excepción -> el handler la captura como Error
+    // M10 (Lote 10): el mensaje se SANA — nunca se filtra e.message crudo al usuario.
     @Test
-    fun `launchApp lanzando excepcion devuelve Error con el mensaje`() = runTest {
+    fun `launchApp lanzando excepcion devuelve Error con mensaje saneado`() = runTest {
         every { appLauncherAction.launchApp(any()) } throws RuntimeException("boom")
 
         val result = handler.execute(SystemCommand.OpenApp("whatsapp"))
 
-        assertEquals(ActionResult.Error("boom"), result)
+        assertEquals(ActionResult.Error("No pudo completarse la acción."), result)
     }
 
     // 3. launchApp devuelve "Error: ..." sin lanzar -> Success (el catch solo captura excepciones)
@@ -194,14 +195,14 @@ class SystemActionHandlerTest {
         coVerify(exactly = 0) { languageAction.setLanguage(any()) }
     }
 
-    // 11. Excepción en acción nueva -> Error con el mensaje
+    // 11. Excepción en acción nueva -> Error saneado (M10)
     @Test
-    fun `excepcion en SetVolume devuelve Error con el mensaje`() = runTest {
+    fun `excepcion en SetVolume devuelve Error con mensaje saneado`() = runTest {
         every { systemVolumeAction.setVolume(any()) } throws RuntimeException("boom")
 
         val result = handler.execute(SystemCommand.SetVolume(VolumeAction.DOWN))
 
-        assertEquals(ActionResult.Error("boom"), result)
+        assertEquals(ActionResult.Error("No pudo completarse la acción."), result)
     }
 
     // 12. CreateNote delega en NoteAction (suspend) y envuelve el resultado en Success
@@ -216,14 +217,24 @@ class SystemActionHandlerTest {
         coVerify(exactly = 1) { noteAction.saveNote("comprar leche") }
     }
 
-    // 13. saveNote lanza excepción -> el handler la captura como Error con el mensaje
+    // 13. saveNote lanza excepción -> el handler la captura como Error saneado (M10)
     @Test
-    fun `excepcion en saveNote devuelve Error con el mensaje`() = runTest {
+    fun `excepcion en saveNote devuelve Error con mensaje saneado`() = runTest {
         coEvery { noteAction.saveNote(any()) } throws RuntimeException("boom")
 
         val result = handler.execute(SystemCommand.CreateNote("texto de prueba"))
 
-        assertEquals(ActionResult.Error("boom"), result)
+        assertEquals(ActionResult.Error("No pudo completarse la acción."), result)
+    }
+
+    // 13b. P2-3 (Lote 10): un mensaje SQL interno (rutas/clases) NO se filtra crudo
+    @Test
+    fun `excepcion con detalle interno de SQL devuelve Error saneado sin filtrar crudo`() = runTest {
+        coEvery { noteAction.saveNote(any()) } throws RuntimeException("SQLiteException: /data/user/0/com.screenassistant/databases/assistant_db (code 13): disk I/O error")
+
+        val result = handler.execute(SystemCommand.CreateNote("texto de prueba"))
+
+        assertEquals(ActionResult.Error("No pudo completarse la acción."), result)
     }
 
     // 14. CreateNote no toca las demás acciones

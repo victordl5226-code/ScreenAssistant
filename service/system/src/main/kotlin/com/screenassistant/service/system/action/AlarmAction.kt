@@ -105,6 +105,11 @@ class AlarmAction(
         // Si llegamos aquí, al menos uno NO es null (el caso ambos-null retornó arriba).
         // El ?: 0 rellena el que falte: cancelación "en punto" (hora exacta, minuto 0)
         // — contrato cubierto por test (ver `cancelAlarm con hora y sin minutos`).
+        // M25-KDoc (Lote 10): ningún canal produce medio-null hoy (parser → null/null o
+        // ambos; codec → rechaza medio-null en validarCancelarAlarma; Gemini → no tiene
+        // función cancelar_alarma): el `?: 0` es la RED de un contrato de API pública
+        // (cancelAlarm(hour: Int?, minute: Int?)) cubierto por test, no un camino de
+        // producción — NO eliminar (veto del Arquitecto).
         val h = hour ?: 0
         val m = minute ?: 0
         val requestCode = h * 60 + m

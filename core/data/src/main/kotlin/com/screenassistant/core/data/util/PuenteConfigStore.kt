@@ -81,6 +81,12 @@ class PuenteConfigStore @Inject constructor(
      * materializa el default — el modo "global (sin setPackage)" no es alcanzable
      * desde la UI (H1). v1.2: 4 setters en UN ÚNICO edit() (P0-2, Lote 9: la base
      * agrupa multi-op en un solo apply() — el test verifica exactly=1).
+     *
+     * M18 (Lote 10) — CONTRATO fail-soft, aceptado por diseño (v1.2a): si la
+     * persistencia falla (Keystore/Tink/IO), la excepción se traga con Log.w y el
+     * EMISOR (PuenteSettingsViewModel.save → refresh) no distingue éxito de fallo —
+     * el estado mostrado refleja lo que [cargar] devuelve (el valor previo si no
+     * persistió). Documentado en la base: EncryptedPrefsStore.
      */
     fun guardar(config: PuenteConfig) {
         try {

@@ -8,8 +8,10 @@ import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
 
+// M24 (Lote 10): renombrado a *Impl — un nombre = un concepto (precedente
+// ScreenContextRepositoryImpl). La interfaz vive en core:domain/repository.
 @Singleton
-class MemoryRepository @Inject constructor(
+class MemoryRepositoryImpl @Inject constructor(
     private val memoryDao: MemoryDao
 ) : com.screenassistant.core.domain.repository.MemoryRepository {
 

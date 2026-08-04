@@ -226,6 +226,12 @@ open class SystemCommandParser(
                     durationSpokenUnitRegex.containsMatchIn(trimmed) ||
                     durationSpokenFractionUnitRegex.containsMatchIn(trimmed)) -> {
                 val minutes = parseDurationMinutes(trimmed) ?: return null
+                // M1 (Lote 10): invariante del temporizador — fuera de [1, 1440] →
+                // error SIN ejecutar (precedente B2 en set_alarm). La fuente única es
+                // SystemCommand.TIMER_* (compartida con el wire vía AccionRegistry).
+                if (minutes !in SystemCommand.TIMER_MIN_MINUTOS..SystemCommand.TIMER_MAX_MINUTOS) {
+                    return "Error: La duración debe estar entre 1 minuto y 24 horas."
+                }
                 execute(SystemCommand.SetTimer(minutes))
             }
 
@@ -344,12 +350,22 @@ open class SystemCommandParser(
         }
     }
 
+    // M2 (Lote 10): sufijo de cortesía del dictado ("por favor"/"porfavor"/"porfa",
+    // case-insensitive, con separadores opcionales) — es un artefacto de la voz, no
+    // parte del argumento de la llamada. Sin esto, "llama a 600 123 456 por favor"
+    // NO matchea phoneRegex (matches = cadena completa) → Call("600 123 456 por favor").
+    private val cortesiaSufijoRegex = Regex("""(?i)\s*(?:por\s+favor|porfavor|porfa)\s*$""")
+
     private fun callOrNumber(arg: String): String {
-        return if (arg.matches(phoneRegex)) {
+        val limpio = cortesiaSufijoRegex.replace(arg.trim(), "").trim()
+        // M2: "llama a por favor" → sin target tras el strip → error SIN ejecutar
+        // (antes emitía Call("por favor"), contacto basura).
+        if (limpio.isEmpty()) return "Error: ¿A quién quieres que llame?"
+        return if (limpio.matches(phoneRegex)) {
             // H4: el strip quita también los puntos (mantiene el '+' actual).
-            execute(SystemCommand.CallNumber(arg.replace(Regex("""[.\s-]"""), "")))
+            execute(SystemCommand.CallNumber(limpio.replace(Regex("""[.\s-]"""), "")))
         } else {
-            execute(SystemCommand.Call(arg))
+            execute(SystemCommand.Call(limpio))
         }
     }
 

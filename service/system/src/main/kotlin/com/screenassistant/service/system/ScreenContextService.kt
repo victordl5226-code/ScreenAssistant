@@ -46,12 +46,32 @@ class ScreenContextService : AccessibilityService(), ScreenCaptureProvider {
     // toca el main thread). Se cierra en onDestroy.
     private val screenshotExecutor = Executors.newSingleThreadExecutor()
 
-    // M8: guard anti-reentrada de la captura (fail-soft con null si hay una en curso).
+    // M8 + EXTRA-1 (Lote 10): guard anti-reentrada. @Volatile: acceso cross-thread
+    // REAL — escribe el hilo IO del VM (captureScreenshot vía suspendCancellableCoroutine
+    // desde viewModelScope.launch(ioDispatcher)) y el executor de screenshots
+    // (onSuccess/onFailure). Sin @Volatile, una segunda petición concurrente podía
+    // leer un valor obsoleto → dos capturas simultáneas (viola el guard M8).
+    // Mismo patrón que el KDoc de ScreenContextRepositoryImpl.
+    @Volatile
     private var capturaEnCurso = false
 
     override fun onServiceConnected() {
         super.onServiceConnected()
-        // D7: auto-registro — el proveedor de captura ES este servicio.
+        registrarProveedor()
+    }
+
+    override fun onRebind(intent: android.content.Intent?) {
+        super.onRebind(intent)
+        // EXTRA-2 (Lote 10): el framework puede reconectar SIN re-lanzar
+        // onServiceConnected (no garantizado por contrato entre versiones) → el
+        // proveedor quedaría desregistrado y la captura muerta (fail-soft, sin
+        // crash). Re-registrar es el mismo camino, coste ~0.
+        registrarProveedor()
+    }
+
+    // D7 + EXTRA-2 (Lote 10): auto-registro compartido — el proveedor de captura
+    // ES este servicio. Se invoca desde onServiceConnected y onRebind (misma lógica).
+    private fun registrarProveedor() {
         if (::screenContextRepository.isInitialized) {
             screenContextRepository.setScreenCaptureProvider(this)
         }

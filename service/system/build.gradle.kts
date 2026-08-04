@@ -47,8 +47,8 @@ dependencies {
     implementation("com.google.dagger:hilt-android:2.53.1")
     ksp("com.google.dagger:hilt-android-compiler:2.53.1")
 
-    // Testing
-    testImplementation("junit:junit:4.13.2")
-    testImplementation("io.mockk:mockk:1.13.12")
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
+    // Testing — M24: version catalog
+    testImplementation(libs.junit)
+    testImplementation(libs.mockk)
+    testImplementation(libs.coroutines.test)
 }

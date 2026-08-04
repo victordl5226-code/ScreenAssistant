@@ -43,7 +43,7 @@ class GeminiRepositoryTest {
     private lateinit var systemAction: SystemAction
     private lateinit var memoryRepository: MemoryRepository
     private lateinit var modelFactory: GenerativeModelFactory
-    private lateinit var repo: GeminiRepository
+    private lateinit var repo: GeminiRepositoryImpl
 
     @Before
     fun setup() {
@@ -59,7 +59,8 @@ class GeminiRepositoryTest {
         coEvery { memoryRepository.saveMemory(any()) } returns Unit
 
         // Instancia FRESCA por test (el apiKey es lazy, se evalúa en el 1er mensaje)
-        repo = GeminiRepository(apiKeyProvider, systemAction, memoryRepository, modelFactory)
+        // M24: clase renombrada a *Impl (un nombre = un concepto, precedente ScreenContextRepositoryImpl).
+        repo = GeminiRepositoryImpl(apiKeyProvider, systemAction, memoryRepository, modelFactory)
     }
 
     // 1. sendMessage con key vacía: aviso claro y cero efectos secundarios

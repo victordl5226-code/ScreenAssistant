@@ -75,10 +75,19 @@ class SystemActionHandler @Inject constructor(
             // dejaría la corrutina viva. Contrato del repo.
             throw e
         } catch (e: Exception) {
-            ActionResult.Error(e.message ?: "Error desconocido")
+            // M10 (Lote 10): NUNCA se filtra e.message al usuario (puede contener
+            // clases internas, rutas o SQL — espíritu ADR-009/O7). El detalle va a
+            // logcat; el usuario recibe el mismo mensaje limpio que el resto de acciones.
+            // B5 sigue intacto: la CancellationException se re-lanza en el catch ANTERIOR.
+            android.util.Log.w("SystemActionHandler", "Acción fallida: ${command.javaClass.simpleName}", e)
+            ActionResult.Error("No pudo completarse la acción.")
         }
     }
 
+    // M22 (Lote 10): NetworkUtils (core:data) se ELIMINÓ — cero call sites. Esta
+    // implementación inline es la VIVA, con la diferencia deliberada de NO incluir
+    // TRANSPORT_ETHERNET: el overlay nunca debe encolar mensajes sobre una red
+    // Ethernet (cable) sin confirmación de conectividad móvil/WiFi (contexto de uso).
     private fun hasNetwork(): Boolean {
         val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
         val network = connectivityManager.activeNetwork

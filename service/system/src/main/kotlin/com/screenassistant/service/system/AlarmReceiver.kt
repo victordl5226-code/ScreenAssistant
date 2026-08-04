@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import com.screenassistant.service.system.action.AlarmAction
+import com.screenassistant.service.system.bridge.TaskerBridgeContract
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
@@ -19,7 +20,8 @@ import kotlinx.coroutines.withTimeoutOrNull
  *
  * Timeout de seguridad (~10s): si Room se cuelga, el broadcast no debe alargar
  * el ciclo de vida del proceso indefinidamente (ANR); finish() se llama SIEMPRE
- * en finally.
+ * en finally. M22 (Lote 10): TIMEOUT_MS ÚNICA en TaskerBridgeContract (misma
+ * semántica de ventana goAsync que TaskerMessageHandlerImpl).
  */
 @AndroidEntryPoint
 class AlarmReceiver : BroadcastReceiver() {
@@ -32,16 +34,12 @@ class AlarmReceiver : BroadcastReceiver() {
         val result = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                withTimeoutOrNull(TIMEOUT_MS) {
+                withTimeoutOrNull(TaskerBridgeContract.TIMEOUT_MS) {
                     alarmAction.onAlarmFired(requestCode)
                 }
             } finally {
                 result.finish()
             }
         }
-    }
-
-    companion object {
-        private const val TIMEOUT_MS = 10_000L
     }
 }

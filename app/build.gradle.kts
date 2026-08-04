@@ -95,15 +95,14 @@ dependencies {
     ksp("com.google.dagger:hilt-android-compiler:2.53.1")
     implementation("androidx.hilt:hilt-navigation-compose:1.2.0")
 
-    // Room (needed by AppModule for Room.databaseBuilder)
-    val roomVersion = "2.6.1"
-    implementation("androidx.room:room-runtime:$roomVersion")
-    implementation("androidx.room:room-ktx:$roomVersion")
+    // Room (needed by AppModule for Room.databaseBuilder) — M24: version catalog
+    implementation(libs.room.runtime)
+    implementation(libs.room.ktx)
 
-    // Testing
-    testImplementation("junit:junit:4.13.2")
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
-    testImplementation("io.mockk:mockk:1.13.12")
+    // Testing — M24: version catalog
+    testImplementation(libs.junit)
+    testImplementation(libs.coroutines.test)
+    testImplementation(libs.mockk)
     androidTestImplementation(platform("androidx.compose:compose-bom:2024.11.00"))
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-tooling")

@@ -16,6 +16,14 @@ sealed class SystemCommand {
     data class PlayMusic(val query: String?) : SystemCommand()
     data class SetVolume(val action: VolumeAction) : SystemCommand()
     data class SetLanguage(val language: AssistantLanguage) : SystemCommand()
+    /**
+     * Temporizador por voz.
+     *
+     * INVARIANTE (M1, Lote 10): `minutes ∈ [TIMER_MIN_MINUTOS, TIMER_MAX_MINUTOS]` —
+     * fuera de rango es un comando inválido y NO debe ejecutarse (guard en parser y
+     * en TimerAction). La fuente única es el companion (compartida con el wire:
+     * AccionRegistry.poner_temporizador consulta estas constantes).
+     */
     data class SetTimer(val minutes: Int) : SystemCommand()
     data class Navigate(val destination: String) : SystemCommand()
     data object OpenSettings : SystemCommand()
@@ -30,6 +38,13 @@ sealed class SystemCommand {
         // Fuente única de verdad del límite de caracteres de una nota por voz
         // (el parser NO trunca: el límite lo aplica la acción al guardar).
         const val MAX_NOTE_CHARS: Int = 1000
+
+        // M1 (Lote 10): invariante del temporizador — fuente única compartida con el
+        // wire (AccionRegistry.poner_temporizador consulta este rango). 24 horas = 1440
+        // minutos; por debajo de 1 minuto no es un temporizador real (el wire valida
+        // el mismo rango en la Fase B' del codec).
+        const val TIMER_MIN_MINUTOS: Int = 1
+        const val TIMER_MAX_MINUTOS: Int = 1440
     }
 }
 

@@ -92,4 +92,22 @@ class TimerActionTest {
 
         assertEquals("Error: No se pudo configurar el temporizador.", result)
     }
+
+    // ===== M1 (Lote 10): guard del invariante [1, 1440] ANTES del try — sin tocar context =====
+
+    @Test
+    fun `setTimer de 0 minutos devuelve error sin tocar context`() {
+        val result = timerAction.setTimer(0)
+
+        assertEquals("Error: La duración debe estar entre 1 minuto y 24 horas.", result)
+        verify(exactly = 0) { context.startActivity(any()) }
+    }
+
+    @Test
+    fun `setTimer de 1441 minutos devuelve error sin tocar context`() {
+        val result = timerAction.setTimer(1441)
+
+        assertEquals("Error: La duración debe estar entre 1 minuto y 24 horas.", result)
+        verify(exactly = 0) { context.startActivity(any()) }
+    }
 }

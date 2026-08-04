@@ -5,7 +5,6 @@ import androidx.lifecycle.viewModelScope
 import com.screenassistant.core.domain.usecase.SystemCommandParser
 import com.screenassistant.core.domain.di.IoDispatcher
 import com.screenassistant.core.domain.repository.GeminiRepository
-import com.screenassistant.core.domain.repository.ScreenContextRepository
 import com.screenassistant.core.domain.service.SpeechToText
 import com.screenassistant.core.domain.service.TextToSpeech
 import com.screenassistant.core.domain.usecase.CaptureScreenContextUseCase
@@ -20,7 +19,6 @@ import javax.inject.Inject
 @HiltViewModel
 class OverlayViewModel @Inject constructor(
     private val geminiRepository: GeminiRepository,
-    private val screenContextRepository: ScreenContextRepository,
     private val commandParser: SystemCommandParser,
     private val captureScreenContextUseCase: CaptureScreenContextUseCase,
     @IoDispatcher private val ioDispatcher: CoroutineDispatcher
@@ -60,7 +58,6 @@ class OverlayViewModel @Inject constructor(
                 // aplica (antes se capturaba la pantalla también para comandos
                 // directos: trabajo de red+imagen desperdiciado en cada mensaje).
                 val screenText = captureScreenContextUseCase.getScreenText()
-                val isNetworkAvailable = true // Se verifica dentro del use case
 
                 // Probar comando directo primero
                 val commandResult = commandParser.parse(text)

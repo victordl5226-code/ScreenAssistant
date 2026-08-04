@@ -22,7 +22,7 @@ object TaskerBridgeContract {
     const val EXTRA_CMD = "cmd" // Tasker Send Intent (fallback, D1/D3)
     const val EXTRA_RESPUESTA = "respuesta" // JSON 6 claves (contrato H4, sin envoltorio)
     const val EXTRA_RESPUESTA_ID = "id" // eco plano para filtrar en Tasker sin parsear
-    const val TIMEOUT_MS = 10_000L // ventana goAsync (patrón AlarmReceiver, D2)
+    const val TIMEOUT_MS = 10_000L // ventana goAsync — M22 (Lote 10): definición ÚNICA (AlarmReceiver y TaskerMessageHandlerImpl la consumen)
     const val CODIGO_TIMEOUT = "error_timeout" // código NUEVO aditivo (H6; no rompe Fase 1)
     const val CONTEXTO_SILENCIOSO = "silencioso" // convención reservada del wire (D3)
 

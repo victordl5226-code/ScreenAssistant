@@ -654,6 +654,66 @@ class SystemCommandParserTest {
         coVerify(exactly = 0) { systemAction.execute(SystemCommand.SetTimer(999)) }
     }
 
+    // ===== M1 (Lote 10): invariante del temporizador [1, 1440] — fuente única
+    // SystemCommand.TIMER_* (compartida con el wire vía AccionRegistry) =====
+
+    @Test
+    fun `parse temporizador de 0 minutos devuelve error y no ejecuta SetTimer`() {
+        val result = parser.parse("pon un temporizador de 0 minutos")
+
+        assertEquals("Error: La duración debe estar entre 1 minuto y 24 horas.", result)
+        coVerify(exactly = 0) { systemAction.execute(SystemCommand.SetTimer(0)) }
+    }
+
+    @Test
+    fun `parse temporizador de 5000 minutos devuelve error y no ejecuta SetTimer`() {
+        val result = parser.parse("pon un temporizador de 5000 minutos")
+
+        assertEquals("Error: La duración debe estar entre 1 minuto y 24 horas.", result)
+        coVerify(exactly = 0) { systemAction.execute(SystemCommand.SetTimer(5000)) }
+    }
+
+    @Test
+    fun `parse temporizador de 1441 minutos devuelve error y no ejecuta SetTimer`() {
+        val result = parser.parse("pon un temporizador de 1441 minutos")
+
+        assertEquals("Error: La duración debe estar entre 1 minuto y 24 horas.", result)
+        coVerify(exactly = 0) { systemAction.execute(SystemCommand.SetTimer(1441)) }
+    }
+
+    @Test
+    fun `parse temporizador de 24 horas ejecuta SetTimer 1440`() {
+        // Boundary alto VÁLIDO del invariante: 24 horas = 1440 minutos → sí ejecuta.
+        coEvery { systemAction.execute(SystemCommand.SetTimer(1440)) } returns
+            ActionResult.Success("Éxito: Temporizador configurado para 1440 minutos.")
+
+        val result = parser.parse("pon un temporizador de 24 horas")
+
+        assertEquals("Éxito: Temporizador configurado para 1440 minutos.", result)
+        coVerify { systemAction.execute(SystemCommand.SetTimer(1440)) }
+    }
+
+    @Test
+    fun `parse temporizador de 1 minuto ejecuta SetTimer 1`() {
+        // P1-2 (Lote 10): boundary bajo VÁLIDO — lockea el invariante por ambos extremos.
+        coEvery { systemAction.execute(SystemCommand.SetTimer(1)) } returns
+            ActionResult.Success("Éxito: Temporizador configurado para 1 minutos.")
+
+        val result = parser.parse("pon un temporizador de 1 minuto")
+
+        assertEquals("Éxito: Temporizador configurado para 1 minutos.", result)
+        coVerify { systemAction.execute(SystemCommand.SetTimer(1)) }
+    }
+
+    @Test
+    fun `parse temporizador de un rato devuelve null y no ejecuta nada`() {
+        // P2-1 (Lote 10): no-numérico EXPLÍCITO — sin unidad de duración → null (Gemini).
+        val result = parser.parse("pon un temporizador de un rato")
+
+        assertNull(result)
+        coVerify(exactly = 0) { systemAction.execute(any()) }
+    }
+
     // ===== O5: duración compuesta (suma de TODAS las unidades + fracciones) =====
 
     @Test
@@ -854,6 +914,68 @@ class SystemCommandParserTest {
         assertEquals("Llamando al 600123456...", result)
         coVerify { systemAction.execute(SystemCommand.CallNumber("600123456")) }
         coVerify(exactly = 0) { systemAction.execute(SystemCommand.Call("600-123-456")) }
+    }
+
+    // ===== M2 (Lote 10): sufijo de cortesía del dictado ("por favor") en llamadas =====
+
+    @Test
+    fun `parse llama a 600 123 456 por favor ejecuta CallNumber y no Call`() {
+        coEvery { systemAction.execute(SystemCommand.CallNumber("600123456")) } returns
+            ActionResult.Success("Llamando al 600123456...")
+
+        val result = parser.parse("llama a 600 123 456 por favor")
+
+        assertEquals("Llamando al 600123456...", result)
+        coVerify { systemAction.execute(SystemCommand.CallNumber("600123456")) }
+        // M2: antes el cortesía se colaba en el argumento → Call("600 123 456 por favor").
+        coVerify(exactly = 0) { systemAction.execute(SystemCommand.Call("600 123 456 por favor")) }
+    }
+
+    @Test
+    fun `parse llama a 600 123 456 porfavor ejecuta CallNumber`() {
+        // P1-1 (Lote 10): variante de dictado SIN espacio ("porfavor").
+        coEvery { systemAction.execute(SystemCommand.CallNumber("600123456")) } returns
+            ActionResult.Success("Llamando al 600123456...")
+
+        val result = parser.parse("llama a 600 123 456 porfavor")
+
+        assertEquals("Llamando al 600123456...", result)
+        coVerify { systemAction.execute(SystemCommand.CallNumber("600123456")) }
+        coVerify(exactly = 0) { systemAction.execute(SystemCommand.Call("600 123 456 porfavor")) }
+    }
+
+    @Test
+    fun `parse llama a Ana por favor ejecuta Call con el contacto`() {
+        coEvery { systemAction.execute(SystemCommand.Call("Ana")) } returns
+            ActionResult.Success("Llamando a Ana...")
+
+        val result = parser.parse("llama a Ana por favor")
+
+        assertEquals("Llamando a Ana...", result)
+        coVerify { systemAction.execute(SystemCommand.Call("Ana")) }
+        coVerify(exactly = 0) { systemAction.execute(SystemCommand.Call("Ana por favor")) }
+    }
+
+    @Test
+    fun `parse llama al jefe por favor ejecuta Call con el contacto`() {
+        coEvery { systemAction.execute(SystemCommand.Call("jefe")) } returns
+            ActionResult.Success("Llamando a jefe...")
+
+        val result = parser.parse("llama al jefe por favor")
+
+        assertEquals("Llamando a jefe...", result)
+        coVerify { systemAction.execute(SystemCommand.Call("jefe")) }
+        coVerify(exactly = 0) { systemAction.execute(SystemCommand.Call("jefe por favor")) }
+    }
+
+    @Test
+    fun `parse llama a por favor devuelve error y no ejecuta nada`() {
+        // M2: tras el strip del cortesía no queda target → error SIN ejecutar
+        // (antes emitía Call("por favor"), contacto basura).
+        val result = parser.parse("llama a por favor")
+
+        assertEquals("Error: ¿A quién quieres que llame?", result)
+        coVerify(exactly = 0) { systemAction.execute(any()) }
     }
 
     // ===== Fase B: recuerda (memoria offline) =====

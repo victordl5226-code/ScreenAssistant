@@ -14,8 +14,10 @@ import com.screenassistant.core.domain.action.SystemAction
 import com.screenassistant.core.domain.bridge.CommandBridge
 import com.screenassistant.core.domain.bridge.SystemCommandJsonCodec
 import com.screenassistant.core.domain.di.IoDispatcher
-import com.screenassistant.core.domain.service.TextToSpeech
+import com.screenassistant.core.domain.repository.GeminiRepository
+import com.screenassistant.core.domain.repository.MemoryRepository
 import com.screenassistant.core.domain.repository.ScreenContextRepository
+import com.screenassistant.core.domain.service.TextToSpeech
 import com.screenassistant.core.domain.usecase.CaptureScreenContextUseCase
 import com.screenassistant.core.domain.usecase.SystemCommandParser
 import com.screenassistant.feature.overlay.TextToSpeechManager
@@ -247,13 +249,13 @@ object AppModule {
     @Provides
     @Singleton
     fun provideLanguageAction(
-        geminiRepository: dagger.Lazy<com.screenassistant.core.domain.repository.GeminiRepository>
+        geminiRepository: dagger.Lazy<GeminiRepository>
     ): LanguageAction = LanguageAction(geminiRepository)
 
     @Provides
     @Singleton
     fun provideMemoryAction(
-        memoryRepository: com.screenassistant.core.domain.repository.MemoryRepository
+        memoryRepository: MemoryRepository
     ): MemoryAction = MemoryAction(memoryRepository)
 
     // NoteAction tiene params con valor por defecto (lambdas de test); Dagger no
@@ -270,33 +272,6 @@ object AppModule {
     @Singleton
     fun provideApiKeyProvider(@ApplicationContext context: Context): ApiKeyProvider {
         return ApiKeyProvider(context)
-    }
-
-    // GeminiRepository (interfaz domain) → GeminiRepository (data)
-    @Provides
-    @Singleton
-    fun provideGeminiRepository(
-        geminiRepositoryImpl: com.screenassistant.core.data.remote.GeminiRepository
-    ): com.screenassistant.core.domain.repository.GeminiRepository {
-        return geminiRepositoryImpl
-    }
-
-    // MemoryRepository (interfaz domain) → MemoryRepository (data)
-    @Provides
-    @Singleton
-    fun provideMemoryRepository(
-        memoryRepositoryImpl: com.screenassistant.core.data.repository.MemoryRepository
-    ): com.screenassistant.core.domain.repository.MemoryRepository {
-        return memoryRepositoryImpl
-    }
-
-    // ScreenContextRepository (interfaz domain) → ScreenContextRepositoryImpl (data)
-    @Provides
-    @Singleton
-    fun provideScreenContextRepository(
-        impl: com.screenassistant.core.data.repository.ScreenContextRepositoryImpl
-    ): ScreenContextRepository {
-        return impl
     }
 
     @Provides

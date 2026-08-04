@@ -122,7 +122,12 @@ object AccionRegistry {
         ),
         AccionRegistrada(
             "poner_temporizador", CommandEnvelope.PonerTemporizador::class,
-            Limites(rangoMinutos = 1..1440),
+            // M1 (Lote 10): el rango lo define el modelo de voz (SystemCommand.TIMER_*);
+            // mismo valor (1..1440) → CorrespondenciaWireTest y SystemCommandJsonCodecTest
+            // pasan intactos. Fuente única, no un hardcodeo local.
+            Limites(
+                rangoMinutos = SystemCommand.TIMER_MIN_MINUTOS..SystemCommand.TIMER_MAX_MINUTOS
+            ),
         ),
         AccionRegistrada(
             "navegar_a", CommandEnvelope.NavegarA::class,

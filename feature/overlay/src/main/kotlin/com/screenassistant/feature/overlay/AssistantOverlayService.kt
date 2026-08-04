@@ -21,7 +21,6 @@ import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import androidx.work.WorkManager
 import com.screenassistant.core.domain.di.IoDispatcher
 import com.screenassistant.core.domain.repository.GeminiRepository
-import com.screenassistant.core.domain.repository.ScreenContextRepository
 import com.screenassistant.core.domain.usecase.CaptureScreenContextUseCase
 import com.screenassistant.core.domain.usecase.SystemCommandParser
 import dagger.hilt.android.AndroidEntryPoint
@@ -40,7 +39,6 @@ class AssistantOverlayService : LifecycleService(), ViewModelStoreOwner, SavedSt
 
     @Inject lateinit var geminiRepository: GeminiRepository
     @Inject lateinit var commandParser: SystemCommandParser
-    @Inject lateinit var screenContextRepository: ScreenContextRepository
     @Inject lateinit var captureScreenContextUseCase: CaptureScreenContextUseCase
     @Inject @IoDispatcher lateinit var ioDispatcher: CoroutineDispatcher
 
@@ -57,10 +55,11 @@ class AssistantOverlayService : LifecycleService(), ViewModelStoreOwner, SavedSt
     // Los ViewModels se construyen manualmente con dependencias inyectadas por Hilt:
     // los @HiltViewModel de los módulos feature NO se agregan al factory del servicio
     // (limitación de la agregación multi-módulo con KSP), así que se evita viewModel().
+    // M15 (Lote 10): screenContextRepository ELIMINADO del passthrough — el use case
+    // CaptureScreenContextUseCase ya lo lleva inyectado; el servicio solo inyecta el use case.
     private val overlayViewModel: OverlayViewModel by lazy {
         OverlayViewModel(
             geminiRepository = geminiRepository,
-            screenContextRepository = screenContextRepository,
             commandParser = commandParser,
             captureScreenContextUseCase = captureScreenContextUseCase,
             ioDispatcher = ioDispatcher
@@ -160,7 +159,16 @@ class AssistantOverlayService : LifecycleService(), ViewModelStoreOwner, SavedSt
                 e.printStackTrace()
             }
         }
-        // Tras descomponer la UI (los ViewModels lazy mueren con la instancia del servicio)
+        // M20 (Lote 10) — GARANTÍA REAL corregida: los ViewModels de la feature se
+        // construyen MANUALMENTE (limitación KSP multi-módulo, ver overlayViewModel)
+        // y NUNCA se registran en este store → `clear()` es un NO-OP formal
+        // (`onCleared` del VM no se dispara por diseño). La limpieza real es:
+        // (1) el DisposableEffect de AssistantOverlayUI destruye TTS/STT al
+        // descomponerse el ComposeView (ANTES de este onDestroy — orden correcto);
+        // (2) los `by lazy` del servicio mueren con la instancia por GC.
+        // NO registrar los VMs (veto del Arquitecto: doble destroy de TTS/STT sin
+        // valor). El ViewModelStore se MANTIENE porque `setViewTreeViewModelStoreOwner`
+        // (showOverlay) lo requiere como estándar del host Compose en un servicio.
         _viewModelStore.clear()
     }
 }

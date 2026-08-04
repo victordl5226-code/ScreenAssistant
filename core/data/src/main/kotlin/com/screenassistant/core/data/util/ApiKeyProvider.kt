@@ -41,6 +41,16 @@ class ApiKeyProvider @Inject constructor(
         return store.getString("gemini_api_key")?.takeIf { it.isNotBlank() } ?: ""
     }
 
+    /**
+     * Persiste la key de Gemini.
+     *
+     * M18 (Lote 10) — CONTRATO fail-soft, aceptado por diseño (v1.2a): si la
+     * persistencia falla (Keystore/Tink/IO), la excepción se traga con Log.w en la
+     * base (EncryptedPrefsStore) y la VM de API key marca "guardado" sin saber —
+     * un reinicio posterior puede mostrar la key previa. El contrato del store es
+     * degradar, nunca lanzar; los consumidores NO deben asumir persistencia real
+     * tras storeApiKey (validar con [getApiKey] si el dato es crítico).
+     */
     fun storeApiKey(key: String) {
         store.putString("gemini_api_key", key)
     }

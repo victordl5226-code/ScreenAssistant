@@ -1,0 +1,24 @@
+# Version catalog (M24, Lote 10): catálogo MÍNIMO y deliberado.
+#
+# Solo se catalogan las versiones duplicadas REALES (Room en 2 módulos; junit,
+# mockk y coroutines-test en 4-5 módulos). El resto de versiones (Compose BOM,
+# Hilt, serialization, coroutines-core, WorkManager…) permanece hardcodeado:
+# migración gradual documentada — tocar todo el build en un lote de menores
+# eleva el riesgo sin valor funcional (criterio del Arquitecto, §2.1c).
+#
+# Room resuelve a 2.6.1 (sin bump): CorrespondenciaWireTest y los tests de
+# DAO dependen del esquema; subir de versión es un lote aparte.
+
+[versions]
+room = "2.6.1"
+junit = "4.13.2"
+mockk = "1.13.12"
+coroutines-test = "1.9.0"
+
+[libraries]
+room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }
+room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "room" }
+room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
+junit = { group = "junit", name = "junit", version.ref = "junit" }
+mockk = { group = "io.mockk", name = "mockk", version.ref = "mockk" }
+coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines-test" }
