@@ -15,7 +15,6 @@ import com.screenassistant.core.domain.bridge.CommandBridge
 import com.screenassistant.core.domain.bridge.SystemCommandJsonCodec
 import com.screenassistant.core.domain.di.IoDispatcher
 import com.screenassistant.core.domain.service.TextToSpeech
-import com.screenassistant.core.domain.repository.ConversationRepository
 import com.screenassistant.core.domain.repository.ScreenContextRepository
 import com.screenassistant.core.domain.usecase.CaptureScreenContextUseCase
 import com.screenassistant.core.domain.usecase.SystemCommandParser
@@ -273,14 +272,6 @@ object AppModule {
         return ApiKeyProvider(context)
     }
 
-    // B3 (Lote 8): captura de pantalla delegada al servicio de accesibilidad vía
-    // interfaz de core:domain (core:data no conoce service:system).
-    @Provides
-    @Singleton
-    fun provideScreenCaptureProvider(): com.screenassistant.core.domain.repository.ScreenCaptureProvider {
-        return com.screenassistant.service.system.bridge.ServiceScreenCaptureProvider
-    }
-
     // GeminiRepository (interfaz domain) → GeminiRepository (data)
     @Provides
     @Singleton
@@ -306,20 +297,6 @@ object AppModule {
         impl: com.screenassistant.core.data.repository.ScreenContextRepositoryImpl
     ): ScreenContextRepository {
         return impl
-    }
-
-    // ConversationRepository (interfaz domain) → ConversationRepositoryImpl (data)
-    @Provides
-    @Singleton
-    fun provideConversationRepository(
-        impl: com.screenassistant.core.data.repository.ConversationRepositoryImpl
-    ): ConversationRepository {
-        return impl
-    }
-
-    @Provides
-    fun provideMessageQueueManager(messageDao: MessageDao): MessageQueueManager {
-        return MessageQueueManager(messageDao)
     }
 
     @Provides

@@ -1,8 +1,0 @@
-<resources>
-    <!-- Notificación del servicio de overlay (Lote 8 — M12): textos migrados desde
-         hardcodes de AssistantOverlayService (se mantiene el texto visible actual). -->
-    <string name="service_channel_name">Assistant Overlay</string>
-    <string name="service_channel_description">Mantiene el asistente flotante activo</string>
-    <string name="service_notification_title">Screen Assistant</string>
-    <string name="service_notification_text">El asistente está activo y listo para ayudar.</string>
-</resources>

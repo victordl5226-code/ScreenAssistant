@@ -1,18 +1,15 @@
 package com.screenassistant.core.data.util
 
 import android.content.Context
-import android.content.SharedPreferences
 import android.util.Log
-import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKey
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Persistencia cifrada de la config del puente (Lote 7, ADR-015): patrón EXACTO
- * de [ApiKeyProvider] (MISMO paquete, MISMA estructura): EncryptedSharedPreferences
- * con MasterKey AES256_GCM + fallback a prefs normales con [isUsingFallback].
+ * Persistencia cifrada de la config del puente (Lote 7, ADR-015): cáscara fina
+ * sobre [EncryptedPrefsStore] (D4, Lote 9 — fuente única del patrón cifrado+
+ * fallback que duplicaban ApiKeyProvider y esta clase). API pública INTACTA.
  *
  * H1: [cargar] materializa el default de F2 — clave "packageRespuesta" ausente o
  * blank → [PuenteConfig.PACKAGE_RESPUESTA_DEFAULT]. El `null` de la data class es
@@ -44,23 +41,14 @@ class PuenteConfigStore @Inject constructor(
     var isUsingFallback: Boolean = false
         private set
 
-    private val prefs: SharedPreferences by lazy {
-        try {
-            val masterKey = MasterKey.Builder(context)
-                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-                .build()
-
-            EncryptedSharedPreferences.create(
-                context,
-                "secure_puente_prefs",
-                masterKey,
-                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-            )
-        } catch (e: Exception) {
-            isUsingFallback = true
-            Log.w(tag, "EncryptedSharedPreferences no disponible, usando fallback: ${e.message}")
-            context.getSharedPreferences("secure_puente_prefs_fallback", Context.MODE_PRIVATE)
+    private val store: EncryptedPrefsStore by lazy {
+        EncryptedPrefsStore.create(
+            context,
+            "secure_puente_prefs",
+            "secure_puente_prefs_fallback",
+            tag
+        ).also { created ->
+            isUsingFallback = created.isUsingFallback
         }
     }
 
@@ -72,13 +60,13 @@ class PuenteConfigStore @Inject constructor(
      */
     fun cargar(): PuenteConfig {
         return try {
-            val packageRespuesta = prefs.getString("packageRespuesta", null)
+            val packageRespuesta = store.getString("packageRespuesta")
             PuenteConfig(
                 packageRespuesta = packageRespuesta?.takeIf { it.isNotBlank() }
                     ?: PuenteConfig.PACKAGE_RESPUESTA_DEFAULT,
-                autoRemoteKey = prefs.getString("autoRemoteKey", "") ?: "",
-                tokenCompartido = prefs.getString("tokenCompartido", "") ?: "",
-                enviarRespuestaURL = prefs.getBoolean("enviarRespuestaURL", false),
+                autoRemoteKey = store.getString("autoRemoteKey") ?: "",
+                tokenCompartido = store.getString("tokenCompartido") ?: "",
+                enviarRespuestaURL = store.getBoolean("enviarRespuestaURL", false),
             )
         } catch (e: Exception) {
             Log.w(tag, "Error leyendo config del puente: ${e.message}")
@@ -91,18 +79,17 @@ class PuenteConfigStore @Inject constructor(
      * Guarda la config tal cual (crudo): un packageRespuesta blank/null se persiste
      * como clave ausente (putString null la elimina en Android real) y [cargar]
      * materializa el default — el modo "global (sin setPackage)" no es alcanzable
-     * desde la UI (H1). v1.2: 4 setters con apply() — packageRespuesta (crudo),
-     * autoRemoteKey, tokenCompartido (tal cual; el trim lo hace la UI/VM),
-     * enviarRespuestaURL.
+     * desde la UI (H1). v1.2: 4 setters en UN ÚNICO edit() (P0-2, Lote 9: la base
+     * agrupa multi-op en un solo apply() — el test verifica exactly=1).
      */
     fun guardar(config: PuenteConfig) {
         try {
-            prefs.edit()
-                .putString("packageRespuesta", config.packageRespuesta)
-                .putString("autoRemoteKey", config.autoRemoteKey)
-                .putString("tokenCompartido", config.tokenCompartido)
-                .putBoolean("enviarRespuestaURL", config.enviarRespuestaURL)
-                .apply()
+            store.edit { editor ->
+                editor.putString("packageRespuesta", config.packageRespuesta)
+                    .putString("autoRemoteKey", config.autoRemoteKey)
+                    .putString("tokenCompartido", config.tokenCompartido)
+                    .putBoolean("enviarRespuestaURL", config.enviarRespuestaURL)
+            }
         } catch (e: Exception) {
             Log.w(tag, "Error guardando config del puente: ${e.message}")
         }

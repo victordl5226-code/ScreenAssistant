@@ -1,2 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest />
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- D1 (Lote 9): el servicio del overlay vive en esta feature (movido desde
+         service:system — única violación de capas del proyecto). Declarado aquí
+         para que el manifest merge lo fusione en el APK final; los permisos
+         (FOREGROUND_SERVICE, SYSTEM_ALERT_WINDOW, FOREGROUND_SERVICE_SPECIAL_USE...)
+         permanecen en el manifest de :app. -->
+    <application>
+        <service
+            android:name="com.screenassistant.feature.overlay.AssistantOverlayService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Floating AI Assistant overlay for screen interaction" />
+        </service>
+    </application>
+
+</manifest>

@@ -26,4 +26,12 @@
     <string name="overlay_command_language">Habla en inglés</string>
     <string name="overlay_command_remember">Recuerda que me gusta el café</string>
     <string name="overlay_command_repeat">Repite</string>
+
+    <!-- D1 (Lote 9): notificación del servicio de overlay — MOVIDAS desde
+         service:system (el servicio vive ahora en feature:overlay; sin esto el
+         R.string del módulo propio no compilaría). Se mantiene el texto actual. -->
+    <string name="service_channel_name">Assistant Overlay</string>
+    <string name="service_channel_description">Mantiene el asistente flotante activo</string>
+    <string name="service_notification_title">Screen Assistant</string>
+    <string name="service_notification_text">El asistente está activo y listo para ayudar.</string>
 </resources>

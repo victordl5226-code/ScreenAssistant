@@ -11,30 +11,29 @@ import com.screenassistant.core.domain.model.ImageData
 import com.screenassistant.core.domain.repository.ScreenCaptureProvider
 import dagger.hilt.android.AndroidEntryPoint
 import java.io.ByteArrayOutputStream
-import java.lang.ref.WeakReference
 import java.util.concurrent.Executors
 import javax.inject.Inject
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 
+/**
+ * D7 (Lote 9): pago del residuo del service-locator (B3 pagó el 90% en Lote 8).
+ * El servicio se AUTO-REGISTRA como [ScreenCaptureProvider] en
+ * [ScreenContextRepositoryImpl] al conectarse y se desregistra al desconectarse
+ * — se elimina el companion estático (WeakReference + acceso de instancia y el
+ * texto estático MUERTO: la vía real del texto es `updateScreenText()` → StateFlow
+ * del repo) y el object proveedor de service:system/bridge (ya no existe).
+ *
+ * P1-5: se inyecta la impl CONCRETA [ScreenContextRepositoryImpl] (el registro es
+ * mecanismo interno de core:data — NO se ensucia la interfaz de dominio).
+ *
+ * Fail-soft intacto (contrato B3): sin servicio conectado → el repo devuelve null.
+ */
 @AndroidEntryPoint
 class ScreenContextService : AccessibilityService(), ScreenCaptureProvider {
 
     @Inject lateinit var screenContextRepository: ScreenContextRepositoryImpl
-
-    companion object {
-        @Volatile
-        var lastScreenText: String = ""
-            private set
-
-        private var instanceRef = WeakReference<ScreenContextService>(null)
-
-        /** Instancia viva del servicio (null si no está conectado). B3: única vía de
-         *  acceso del proveedor de captura (los estáticos takeScreenshot/callback se
-         *  eliminaron en el Lote 8: 0 call sites y estado global frágil). */
-        fun instancia(): ScreenContextService? = instanceRef.get()
-    }
 
     private var lastEventTime = 0L
     private val THROTTLE_MS = 1000L // Solo procesar cada 1 segundo
@@ -52,17 +51,25 @@ class ScreenContextService : AccessibilityService(), ScreenCaptureProvider {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
-        instanceRef = WeakReference(this)
+        // D7: auto-registro — el proveedor de captura ES este servicio.
+        if (::screenContextRepository.isInitialized) {
+            screenContextRepository.setScreenCaptureProvider(this)
+        }
     }
 
     override fun onUnbind(intent: android.content.Intent?): Boolean {
-        instanceRef.clear()
+        // D7: desregistro — el servicio deja de ser el proveedor de captura.
+        if (::screenContextRepository.isInitialized) {
+            screenContextRepository.setScreenCaptureProvider(null)
+        }
         return super.onUnbind(intent)
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        instanceRef.clear()
+        if (::screenContextRepository.isInitialized) {
+            screenContextRepository.setScreenCaptureProvider(null)
+        }
         screenshotExecutor.shutdown()
     }
 
@@ -178,8 +185,8 @@ class ScreenContextService : AccessibilityService(), ScreenCaptureProvider {
         val textBuilder = StringBuilder()
         extractText(rootNode, textBuilder)
         val extractedText = textBuilder.toString()
-        lastScreenText = extractedText
-        // Actualizar el repositorio
+        // Actualizar el repositorio (D7: sin texto estático — la vía real del
+        // texto es el StateFlow del repo).
         if (::screenContextRepository.isInitialized) {
             screenContextRepository.updateScreenText(extractedText)
         }

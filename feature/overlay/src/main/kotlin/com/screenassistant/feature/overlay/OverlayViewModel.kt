@@ -4,7 +4,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.screenassistant.core.domain.usecase.SystemCommandParser
 import com.screenassistant.core.domain.di.IoDispatcher
-import com.screenassistant.core.domain.repository.ConversationRepository
 import com.screenassistant.core.domain.repository.GeminiRepository
 import com.screenassistant.core.domain.repository.ScreenContextRepository
 import com.screenassistant.core.domain.service.SpeechToText
@@ -21,7 +20,6 @@ import javax.inject.Inject
 @HiltViewModel
 class OverlayViewModel @Inject constructor(
     private val geminiRepository: GeminiRepository,
-    private val conversationRepository: ConversationRepository,
     private val screenContextRepository: ScreenContextRepository,
     private val commandParser: SystemCommandParser,
     private val captureScreenContextUseCase: CaptureScreenContextUseCase,

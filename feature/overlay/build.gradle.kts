@@ -35,6 +35,11 @@ dependencies {
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
+    // D1 (Lote 9): el servicio del overlay se MOVIÓ aquí desde service:system →
+    // LifecycleService (lifecycle-service) y WorkManager (solo para
+    // cancelConnectivityWorkerZombie, M22) pasan a ser deps de esta feature.
+    implementation("androidx.lifecycle:lifecycle-service:2.8.7")
+    implementation("androidx.work:work-runtime-ktx:2.10.0")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended:1.7.5")
 

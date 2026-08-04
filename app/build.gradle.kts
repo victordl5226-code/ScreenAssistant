@@ -68,7 +68,6 @@ dependencies {
     implementation(project(":core:domain"))
     implementation(project(":core:data"))
     implementation(project(":core:ui"))
-    implementation(project(":feature:chat"))
     implementation(project(":feature:overlay"))
     implementation(project(":service:system"))
 
@@ -76,10 +75,12 @@ dependencies {
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("androidx.activity:activity-compose:1.9.3")
-    // Puente Tasker: AppModule compila contra el constructor sintético con default de
-    // SystemCommandJsonCodec (firma con Json) → compileOnly basta para compilar; el
-    // RUNTIME llega transitivamente vía :service:system (que la declara implementation).
-    compileOnly("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+    // Puente Tasker (D5, Lote 9): AppModule compila contra el constructor sintético
+    // con default de SystemCommandJsonCodec (firma con Json) → implementation EXPLÍCITO.
+    // El runtime ya llegaba por transitividad de :service:system, pero compileOnly era
+    // frágil: si ese módulo dejara de exponerla → NoClassDefFoundError silencioso en
+    // producción (versión 1.7.3 idéntica en todo el grafo → cero conflictos).
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
 
     // Compose
     implementation(platform("androidx.compose:compose-bom:2024.11.00"))

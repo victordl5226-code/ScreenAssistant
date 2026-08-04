@@ -4,9 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import com.google.ai.client.generativeai.GenerativeModel
 import com.google.ai.client.generativeai.type.Content
-import com.google.ai.client.generativeai.type.FunctionDeclaration
 import com.google.ai.client.generativeai.type.FunctionResponsePart
-import com.google.ai.client.generativeai.type.Schema
 import com.google.ai.client.generativeai.type.Tool
 import com.google.ai.client.generativeai.type.content
 import com.google.ai.client.generativeai.type.QuotaExceededException
@@ -37,85 +35,12 @@ class GeminiRepository @Inject constructor(
         ""
     }
 
-    // 1. Declaración de Funciones (Uso de List<Schema<*>> según SDK 0.9.0)
-    private val openAlarmsTool = FunctionDeclaration(
-        name = "open_alarms",
-        description = "Abre la aplicación de reloj en la sección de alarmas.",
-        parameters = emptyList(),
-        requiredParameters = emptyList()
-    )
-
-    private val setAlarmTool = FunctionDeclaration(
-        name = "set_alarm",
-        description = "Configura una nueva alarma.",
-        parameters = listOf(
-            Schema.int("hour", "Hora (0-23)"),
-            Schema.int("minute", "Minuto (0-59)"),
-            Schema.str("label", "Nombre de la alarma")
-        ),
-        requiredParameters = listOf("hour", "minute")
-    )
-
-    private val searchGoogleTool = FunctionDeclaration(
-        name = "search_google",
-        description = "Busca algo en Google.",
-        parameters = listOf(
-            Schema.str("query", "Término de búsqueda")
-        ),
-        requiredParameters = listOf("query")
-    )
-
-    private val openYouTubeTool = FunctionDeclaration(
-        name = "open_youtube",
-        description = "Abre YouTube.",
-        parameters = listOf(
-            Schema.str("query", "Búsqueda en YouTube")
-        ),
-        requiredParameters = emptyList()
-    )
-
-    private val openWhatsAppTool = FunctionDeclaration(
-        name = "open_whatsapp",
-        description = "Abre WhatsApp.",
-        parameters = emptyList(),
-        requiredParameters = emptyList()
-    )
-
-    private val playMusicTool = FunctionDeclaration(
-        name = "play_music",
-        description = "Reproduce música.",
-        parameters = listOf(
-            Schema.str("query", "Canción o artista")
-        ),
-        requiredParameters = emptyList()
-    )
-
-    private val saveMemoryTool = FunctionDeclaration(
-        name = "save_memory",
-        description = "Guarda un dato importante sobre el usuario.",
-        parameters = listOf(
-            Schema.str("fact", "El dato a recordar")
-        ),
-        requiredParameters = listOf("fact")
-    )
-
-    private val openAppTool = FunctionDeclaration(
-        name = "open_app",
-        description = "Abre una aplicación instalada en el dispositivo. El valor puede ser el nombre visible de la app (p. ej. \"WhatsApp\") o su package name (p. ej. \"com.whatsapp\").",
-        parameters = listOf(
-            Schema.str("app_name", "Nombre visible o package name de la aplicación a abrir")
-        ),
-        requiredParameters = listOf("app_name")
-    )
-
-    // 2. Configuración del Modelo (Gemini 2.0 Flash - El punto de equilibrio entre SDK y Servidor)
-    // La construcción LAZY queda delegada a GenerativeModelFactory: no se toca Gemini
-    // ni la red hasta el primer mensaje real (ver buildModel()).
-    private val tools: List<Tool> = listOf(Tool(listOf(
-        openAlarmsTool, setAlarmTool, searchGoogleTool,
-        openYouTubeTool, openWhatsAppTool, playMusicTool,
-        saveMemoryTool, openAppTool
-    )))
+    // 1. Declaración de Funciones (D3, Lote 9): extraídas a GeminiFunctionCatalog
+    // (core:data/remote) — fuente única de las 8 FunctionDeclaration + mapeo
+    // nombre→wire del puente (guardián CorrespondenciaGeminiWireTest). El `when`
+    // de EJECUCIÓN (abajo) se alimenta de los mismos nombres (inglés, vocabulario
+    // del LLM por diseño).
+    private val tools: List<Tool> = listOf(Tool(GeminiFunctionCatalog.declaraciones))
 
     private var systemInstruction: Content? = buildInstruction(com.screenassistant.core.domain.model.AssistantLanguage.SPANISH)
 
@@ -161,8 +86,9 @@ class GeminiRepository @Inject constructor(
     // cada key tiene su propio hilo de conversación en el SDK.
     private var lastApiKey: String? = null
 
-    // Synchronized único: el chat es compartido entre overlay (servicio) y
-    // pantalla de chat (app), y ambos pueden enviar mensajes en paralelo.
+    // Synchronized único: la sesión de Gemini es compartida entre el overlay
+    // (servicio) y el resto de consumidores; el SDK no es thread-safe para
+    // conversaciones concurrentes (la pantalla de chat se eliminó en Lote 9-D2).
     private fun currentChat(apiKey: String): com.google.ai.client.generativeai.Chat? {
         synchronized(this) {
             if (apiKey != lastApiKey) {

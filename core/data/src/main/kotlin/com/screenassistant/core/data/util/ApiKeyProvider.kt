@@ -1,14 +1,15 @@
 package com.screenassistant.core.data.util
 
 import android.content.Context
-import android.content.SharedPreferences
-import android.util.Log
-import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKey
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/**
+ * API key de Gemini cifrada (D4, Lote 9): cáscara fina sobre [EncryptedPrefsStore]
+ * (fuente única del patrón cifrado+fallback; ver KDoc de la base). API pública
+ * INTACTA — los consumidores (AppModule, VMs) no cambian.
+ */
 @Singleton
 class ApiKeyProvider @Inject constructor(
     @ApplicationContext private val context: Context
@@ -22,68 +23,44 @@ class ApiKeyProvider @Inject constructor(
         private set
 
     // Blinda contra fallos del Keystore/Tink en dispositivos sin soporte.
-    // Si EncryptedSharedPreferences falla, degrada a SharedPreferences normales.
-    private val prefs: SharedPreferences by lazy {
-        try {
-            val masterKey = MasterKey.Builder(context)
-                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-                .build()
-
-            EncryptedSharedPreferences.create(
-                context,
-                "secure_api_prefs",
-                masterKey,
-                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-            )
-        } catch (e: Exception) {
-            isUsingFallback = true
-            Log.w(tag, "EncryptedSharedPreferences no disponible, usando fallback: ${e.message}")
-            context.getSharedPreferences("secure_api_prefs_fallback", Context.MODE_PRIVATE)
+    // El lazy queda en el CONSUMIDOR (comportamiento idéntico al previo):
+    // la crypto real se toca en el primer acceso a prefs, no en el arranque.
+    private val store: EncryptedPrefsStore by lazy {
+        EncryptedPrefsStore.create(
+            context,
+            "secure_api_prefs",
+            "secure_api_prefs_fallback",
+            tag
+        ).also { created ->
+            isUsingFallback = created.isUsingFallback
         }
     }
 
     fun getApiKey(): String {
-        return try {
-            val storedKey = prefs.getString("gemini_api_key", null)
-            if (!storedKey.isNullOrBlank()) storedKey else ""
-        } catch (e: Exception) {
-            Log.w(tag, "Error leyendo API key: ${e.message}")
-            ""
-        }
+        // getString de la base ya degrada con null en fallo (Log.w interno).
+        return store.getString("gemini_api_key")?.takeIf { it.isNotBlank() } ?: ""
     }
 
     fun storeApiKey(key: String) {
-        try {
-            prefs.edit().putString("gemini_api_key", key).apply()
-        } catch (e: Exception) {
-            Log.w(tag, "Error guardando API key: ${e.message}")
-        }
+        store.putString("gemini_api_key", key)
     }
 
     // B4 (Lote 8): siembra inicial desde BuildConfig en el arranque de la app.
     // El flag api_key_seeded evita re-sembrar si el usuario la BORRÓ a propósito
     // (clearApiKey no borra el flag: una vez sembrada, el control es del usuario).
-    // Un solo edit() con ambas claves: sin estados intermedios observables.
+    // Un solo edit() con ambas claves: sin estados intermedios observables (edit
+    // de la base = UN ÚNICO apply(), requisito P0-2).
     fun sembrarDesdeBuildConfig(buildConfigKey: String) {
         if (buildConfigKey.isBlank()) return
-        try {
-            if (prefs.getBoolean("api_key_seeded", false)) return
-            prefs.edit()
-                .putBoolean("api_key_seeded", true)
+        if (store.getBoolean("api_key_seeded", false)) return
+        store.edit { editor ->
+            editor.putBoolean("api_key_seeded", true)
                 .putString("gemini_api_key", buildConfigKey)
-                .apply()
-        } catch (e: Exception) {
-            Log.w(tag, "Error sembrando API key: ${e.message}")
         }
     }
 
     fun clearApiKey() {
-        try {
-            // B4: NO se borra api_key_seeded (el usuario la borró → no re-sembrar).
-            prefs.edit().remove("gemini_api_key").apply()
-        } catch (e: Exception) {
-            Log.w(tag, "Error eliminando API key: ${e.message}")
-        }
+        // B4: NO se borra api_key_seeded (el usuario la borró → no re-sembrar).
+        store.remove("gemini_api_key")
     }
 }

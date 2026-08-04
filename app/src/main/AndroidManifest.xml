@@ -40,16 +40,6 @@
         android:theme="@style/Theme.ScreenAssistant">
 
         <service
-            android:name=".service.system.AssistantOverlayService"
-            android:enabled="true"
-            android:exported="false"
-            android:foregroundServiceType="specialUse">
-            <property
-                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Floating AI Assistant overlay for screen interaction" />
-        </service>
-
-        <service
             android:name=".service.system.ScreenContextService"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
             android:exported="false">

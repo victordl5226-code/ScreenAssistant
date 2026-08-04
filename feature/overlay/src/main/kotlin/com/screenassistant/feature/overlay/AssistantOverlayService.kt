@@ -1,4 +1,4 @@
-package com.screenassistant.service.system
+package com.screenassistant.feature.overlay
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -20,25 +20,26 @@ import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import androidx.work.WorkManager
 import com.screenassistant.core.domain.di.IoDispatcher
-import com.screenassistant.core.domain.repository.ConversationRepository
 import com.screenassistant.core.domain.repository.GeminiRepository
 import com.screenassistant.core.domain.repository.ScreenContextRepository
 import com.screenassistant.core.domain.usecase.CaptureScreenContextUseCase
 import com.screenassistant.core.domain.usecase.SystemCommandParser
-import com.screenassistant.feature.chat.ChatViewModel
-import com.screenassistant.feature.overlay.AssistantOverlayUI
-import com.screenassistant.feature.overlay.OverlayViewModel
-import com.screenassistant.feature.overlay.OverlayWindowManager
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineDispatcher
 
+/**
+ * D1 (Lote 9): el servicio del overlay vive en feature:overlay (movido desde
+ * service:system — era la única violación de capas del proyecto). Hostea la UI
+ * Compose y los ViewModels de la feature; NO depende de service:system.
+ * El <service> se declara en el manifest de feature:overlay (se fusiona en el
+ * de app); los permisos (FOREGROUND_SERVICE, SYSTEM_ALERT_WINDOW...) quedan en app.
+ */
 @AndroidEntryPoint
 class AssistantOverlayService : LifecycleService(), ViewModelStoreOwner, SavedStateRegistryOwner {
 
     @Inject lateinit var geminiRepository: GeminiRepository
     @Inject lateinit var commandParser: SystemCommandParser
-    @Inject lateinit var conversationRepository: ConversationRepository
     @Inject lateinit var screenContextRepository: ScreenContextRepository
     @Inject lateinit var captureScreenContextUseCase: CaptureScreenContextUseCase
     @Inject @IoDispatcher lateinit var ioDispatcher: CoroutineDispatcher
@@ -59,17 +60,9 @@ class AssistantOverlayService : LifecycleService(), ViewModelStoreOwner, SavedSt
     private val overlayViewModel: OverlayViewModel by lazy {
         OverlayViewModel(
             geminiRepository = geminiRepository,
-            conversationRepository = conversationRepository,
             screenContextRepository = screenContextRepository,
             commandParser = commandParser,
             captureScreenContextUseCase = captureScreenContextUseCase,
-            ioDispatcher = ioDispatcher
-        )
-    }
-
-    private val chatViewModel: ChatViewModel by lazy {
-        ChatViewModel(
-            geminiRepository = geminiRepository,
             ioDispatcher = ioDispatcher
         )
     }

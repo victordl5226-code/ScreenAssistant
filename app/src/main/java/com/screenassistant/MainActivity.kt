@@ -37,7 +37,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.screenassistant.core.ui.theme.ScreenAssistantTheme
-import com.screenassistant.service.system.AssistantOverlayService
+import com.screenassistant.feature.overlay.AssistantOverlayService
 import com.screenassistant.service.system.ScreenContextService
 import com.screenassistant.ui.apikey.ApiKeySection
 import com.screenassistant.ui.apikey.ApiKeyViewModel

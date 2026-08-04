@@ -1,7 +1,6 @@
 package com.screenassistant.feature.overlay
 
 import androidx.lifecycle.ViewModel
-import com.screenassistant.core.domain.repository.ConversationRepository
 import com.screenassistant.core.domain.repository.GeminiRepository
 import com.screenassistant.core.domain.repository.ScreenContextRepository
 import com.screenassistant.core.domain.service.SpeechToText
@@ -38,7 +37,6 @@ class OverlayViewModelTest {
     private val testDispatcher = StandardTestDispatcher()
 
     private lateinit var geminiRepository: GeminiRepository
-    private lateinit var conversationRepository: ConversationRepository
     private lateinit var screenContextRepository: ScreenContextRepository
     private lateinit var commandParser: SystemCommandParser
     private lateinit var captureScreenContextUseCase: CaptureScreenContextUseCase
@@ -52,7 +50,6 @@ class OverlayViewModelTest {
 
         // Mocks NO relaxed: solo responden lo que se stubea.
         geminiRepository = mockk()
-        conversationRepository = mockk()
         screenContextRepository = mockk()
         commandParser = mockk()
         captureScreenContextUseCase = mockk()
@@ -74,7 +71,6 @@ class OverlayViewModelTest {
         // Instancia FRESCA del VM por test
         viewModel = OverlayViewModel(
             geminiRepository = geminiRepository,
-            conversationRepository = conversationRepository,
             screenContextRepository = screenContextRepository,
             commandParser = commandParser,
             captureScreenContextUseCase = captureScreenContextUseCase,
