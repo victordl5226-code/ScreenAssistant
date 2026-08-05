@@ -230,7 +230,7 @@ open class SystemCommandParser(
                 // error SIN ejecutar (precedente B2 en set_alarm). La fuente única es
                 // SystemCommand.TIMER_* (compartida con el wire vía AccionRegistry).
                 if (minutes !in SystemCommand.TIMER_MIN_MINUTOS..SystemCommand.TIMER_MAX_MINUTOS) {
-                    return "Error: La duración debe estar entre 1 minuto y 24 horas."
+                    return SystemCommand.TIMER_ERROR_MENSAJE
                 }
                 execute(SystemCommand.SetTimer(minutes))
             }

@@ -1,5 +1,6 @@
 package com.screenassistant.core.data.remote
 
+import android.util.Log
 import com.google.ai.client.generativeai.Chat
 import com.google.ai.client.generativeai.GenerativeModel
 import com.google.ai.client.generativeai.type.Content
@@ -18,8 +19,10 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.mockkStatic
 import io.mockk.slot
 import io.mockk.verify
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
@@ -568,6 +571,11 @@ class GeminiRepositoryTest {
 
     @Test
     fun `streamMessage captura IOException durante la recoleccion y emite error sin propagar`() = runTest {
+        // P1-1 (Lote 11): core:data NO tiene isReturnDefaultValues → el Log.w del
+        // catch de recolección lanzaría "Method w in android.util.Log not mocked"
+        // (patrón PuenteConfigStoreTest:67-69).
+        mockkStatic(Log::class)
+        every { Log.w(any<String>(), any<String>(), any<Throwable>()) } returns 0
         val modelMock = mockk<GenerativeModel>()
         val chatMock = mockk<Chat>()
         every { modelMock.startChat() } returns chatMock
@@ -578,6 +586,72 @@ class GeminiRepositoryTest {
 
         val values = repo.streamMessage("hola").toList()
 
-        assertEquals(listOf("Error en streaming: red caída"), values)
+        // M3 (Lote 11): el leak "Error en streaming: red caída" desaparece — el
+        // usuario recibe el fallo técnico genérico compartido con sendMessage.
+        assertEquals(
+            listOf("He tenido un problema técnico momentáneo. Inténtalo de nuevo en un segundo."),
+            values
+        )
+    }
+
+    @Test
+    fun `streamMessage captura IOException durante la construccion y devuelve flujo generico`() = runTest {
+        // Catch de CONSTRUCCIÓN (antes sin cobertura): sendMessageStream LANZA en
+        // la llamada (no en el flujo) → el try exterior cae al flowOf genérico.
+        mockkStatic(Log::class)
+        every { Log.w(any<String>(), any<String>(), any<Throwable>()) } returns 0
+        val modelMock = mockk<GenerativeModel>()
+        val chatMock = mockk<Chat>()
+        every { modelMock.startChat() } returns chatMock
+        coEvery { chatMock.sendMessageStream(any<String>()) } throws java.io.IOException("red caída")
+        every { modelFactory.create(any(), any(), any()) } returns modelMock
+
+        val values = repo.streamMessage("hola").toList()
+
+        assertEquals(
+            listOf("He tenido un problema técnico momentáneo. Inténtalo de nuevo en un segundo."),
+            values
+        )
+    }
+
+    @Test
+    fun `sendMessage propaga CancellationException sin convertirla en mensaje`() = runTest {
+        // Decisión A (Lote 11, B5): el catch genérico de sendMessage no debe tragar
+        // la cancelación del scope. try/catch manual (P2-1 — nunca assertFailsWith
+        // sobre llamada suspendida).
+        val modelMock = mockk<GenerativeModel>()
+        val chatMock = mockk<Chat>()
+        every { modelMock.startChat() } returns chatMock
+        coEvery { chatMock.sendMessage(any<Content>()) } throws CancellationException("cancel")
+        every { modelFactory.create(any(), any(), any()) } returns modelMock
+
+        val ex = try {
+            repo.sendMessage("hola")
+            null
+        } catch (e: CancellationException) {
+            e
+        }
+
+        assertTrue("la cancelación debe propagarse, no devolver mensaje", ex is CancellationException)
+    }
+
+    @Test
+    fun `streamMessage propaga CancellationException durante la construccion del flujo`() = runTest {
+        // Decisión A (Lote 11, B5): el catch de CONSTRUCCIÓN re-lanza la cancelación
+        // en lugar de devolver un flujo de error (try/catch manual, P2-1).
+        val modelMock = mockk<GenerativeModel>()
+        val chatMock = mockk<Chat>()
+        every { modelMock.startChat() } returns chatMock
+        coEvery { chatMock.sendMessageStream(any<String>()) } throws CancellationException("cancel")
+        every { modelFactory.create(any(), any(), any()) } returns modelMock
+
+        val ex = try {
+            repo.streamMessage("hola")
+            null
+        } catch (e: CancellationException) {
+            e
+        }
+
+        assertTrue("la cancelación debe propagarse, no devolver flujo de error", ex is CancellationException)
     }
 }

@@ -1,5 +1,6 @@
 package com.screenassistant.service.system.bridge
 
+import android.util.Log
 import com.screenassistant.core.data.util.PuenteConfigStore
 import com.screenassistant.core.domain.bridge.CommandBridge
 import com.screenassistant.core.domain.bridge.SystemCommandJsonCodec
@@ -60,12 +61,16 @@ class TaskerMessageHandlerImpl @Inject constructor(
             // convierte el receiver en su propio rethrow; cierre QA/Supervisor, punto 4).
             throw e
         } catch (e: Exception) {
+            // Lote 11: el mensaje del wire se HABLA por TTS (H7) → nunca e.message
+            // crudo (ADR-009). Detalle a logcat local; `fallo_ejecucion` con el
+            // mensaje saneado de fuente única (los guiones ramifican por %error).
+            Log.w("TaskerMessageHandler", "Fallo inesperado del puente", e)
             codec.encodeResult(
                 "error",
                 TaskerPayloadExtractor.idDe(extra),
                 null,
                 CODIGO_FALLO_EJECUCION,
-                "Error: ${e.message ?: "Error desconocido"}",
+                TaskerBridgeContract.MSG_FALLO_EJECUCION,
             )
         }
     }

@@ -45,6 +45,11 @@ sealed class SystemCommand {
         // el mismo rango en la Fase B' del codec).
         const val TIMER_MIN_MINUTOS: Int = 1
         const val TIMER_MAX_MINUTOS: Int = 1440
+
+        // M1 (Lote 11): mensaje del invariante del temporizador — fuente única compartida
+        // por el parser (rama 3) y TimerAction (guard defensivo). El wire NO lo usa
+        // (formato valor_invalido con valor recibido — canales distintos).
+        const val TIMER_ERROR_MENSAJE: String = "Error: La duración debe estar entre 1 minuto y 24 horas."
     }
 }
 

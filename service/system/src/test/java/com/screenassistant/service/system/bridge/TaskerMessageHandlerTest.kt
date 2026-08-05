@@ -116,7 +116,8 @@ class TaskerMessageHandlerTest {
 
         assertEquals("error", estadoDe(respuesta))
         assertEquals("fallo_ejecucion", errorDe(respuesta))
-        assertEquals("Error: boom", mensajeDe(respuesta))
+        // Lote 11: mensaje saneado ADR-009 de fuente única (el wire se HABLA por TTS).
+        assertEquals("Error: No pudo completarse la acción.", mensajeDe(respuesta))
         assertEquals("h-1", idDe(respuesta)) // eco best-effort del wire
         assertSeisClaves(respuesta)
     }
@@ -138,7 +139,9 @@ class TaskerMessageHandlerTest {
 
         val respuesta = handler.handle(wire, null)
 
-        assertEquals("Error: Error desconocido", mensajeDe(respuesta))
+        // Lote 11: null y no-null convergen al mismo texto saneado (el antiguo
+        // "Error: Error desconocido" desaparece — el genérico cubre ambos casos).
+        assertEquals("Error: No pudo completarse la acción.", mensajeDe(respuesta))
     }
 
     // ===== Timeout con tiempo virtual (D6, H6) =====

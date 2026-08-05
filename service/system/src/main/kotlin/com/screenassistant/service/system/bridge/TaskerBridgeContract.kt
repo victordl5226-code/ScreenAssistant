@@ -47,6 +47,15 @@ object TaskerBridgeContract {
     /** Patrón ADR-009: "Error: <razón>." — llega al emisor en `mensaje`. */
     const val MSG_TOKEN_INVALIDO = "Error: Token inválido."
 
+    /** Lote 11: fallo ESTRUCTURAL del camino excepcional (`fallo_ejecucion`) —
+     *  fuente única para el handler, el bridge y el receiver. Mismo texto humano
+     *  que el canal de voz de M10 ("No pudo completarse la acción.") + prefijo
+     *  ADR-009. El mensaje del wire se HABLA por TTS (H7: `textoDe` devuelve
+     *  `mensaje`; `hablar = !silencioso`) → nunca excepciones crudas (ADR-009);
+     *  el detalle va a Log.w local. `fallo_accion` y el reason de ActionResult.Error
+     *  quedan verbatim (ADR-B7). */
+    const val MSG_FALLO_EJECUCION = "Error: No pudo completarse la acción."
+
     // Referencias documentales (no se usan en v1, D1/D5):
     // net.dinglisch.android.taskerm (Tasker) · com.bighugegiraffe.andromeda (AutoRemote).
 }

@@ -1,5 +1,6 @@
 package com.screenassistant.service.system.bridge
 
+import android.util.Log
 import com.screenassistant.core.domain.action.SystemAction
 import com.screenassistant.core.domain.bridge.CommandBridge
 import com.screenassistant.core.domain.bridge.CommandClassifier
@@ -11,6 +12,7 @@ import com.screenassistant.core.domain.bridge.model.CommandEnvelope
 import com.screenassistant.core.domain.model.ActionResult
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * Implementación del puente Tasker (ADR-013, H1): decode → clasificar → ejecutar.
@@ -66,9 +68,19 @@ class SystemCommandBridgeImpl @Inject constructor(
                         "error", id, null, CODIGO_FALLO_EJECUCION, "Error: ${result.reason}"
                     )
             }
+        } catch (e: CancellationException) {
+            // EXTRA-1 (Lote 11, B5): la cancelación del scope (p.ej. el
+            // withTimeoutOrNull del handler) NO es un fallo del puente — se
+            // propaga (mismo contrato que TaskerMessageHandlerImpl L58-61).
+            // Tragarla dejaría la corrutina trabajando tras el timeout.
+            throw e
         } catch (e: Exception) {
+            // Lote 11: el mensaje del wire se HABLA por TTS (H7) → nunca e.message
+            // crudo (ADR-009). Detalle a logcat local; mensaje saneado de fuente
+            // única (los guiones ramifican por %error).
+            Log.w("SystemCommandBridge", "Fallo inesperado ejecutando ${command.javaClass.simpleName}", e)
             codec.encodeResult(
-                "error", id, null, CODIGO_FALLO_EJECUCION, "Error: ${e.message ?: "Error desconocido"}"
+                "error", id, null, CODIGO_FALLO_EJECUCION, TaskerBridgeContract.MSG_FALLO_EJECUCION
             )
         }
     }

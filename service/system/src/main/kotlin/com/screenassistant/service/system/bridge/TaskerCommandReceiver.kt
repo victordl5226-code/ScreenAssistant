@@ -3,6 +3,7 @@ package com.screenassistant.service.system.bridge
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.util.Log
 import com.screenassistant.core.domain.bridge.SystemCommandJsonCodec
 import com.screenassistant.core.domain.bridge.SystemCommandJsonCodec.Companion.CODIGO_FALLO_EJECUCION
 import dagger.hilt.android.AndroidEntryPoint
@@ -68,13 +69,16 @@ class TaskerCommandReceiver : BroadcastReceiver() {
                 throw e
             } catch (t: Throwable) {
                 // H9: violación del contrato del handler → fallo_ejecucion estructurado.
+                // Lote 11: el mensaje se HABLA por TTS (H7) → nunca t.message crudo
+                // (ADR-009): detalle a logcat, mensaje saneado de fuente única.
+                Log.w("TaskerCommandReceiver", "Violación del contrato del handler", t)
                 emitter.emitir(
                     codec.encodeResult(
                         "error",
                         TaskerPayloadExtractor.idDe(extra),
                         null,
                         CODIGO_FALLO_EJECUCION,
-                        "Error: ${t.message ?: "Error desconocido"}",
+                        TaskerBridgeContract.MSG_FALLO_EJECUCION,
                     ),
                     hablar = !payload.silencioso,
                 )

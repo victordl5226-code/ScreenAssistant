@@ -40,7 +40,7 @@ class SpeechToTextManager(
                     SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "El motor de voz está ocupado"
                     SpeechRecognizer.ERROR_SERVER -> "Error del servidor"
                     SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "No se detectó voz"
-                    else -> "Error desconocido: $error"
+                    else -> "Error desconocido al escuchar."
                 }
                 onError(errorMessage)
             }

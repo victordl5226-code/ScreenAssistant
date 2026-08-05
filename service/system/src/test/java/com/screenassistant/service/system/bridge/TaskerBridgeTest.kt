@@ -12,6 +12,7 @@ import com.screenassistant.core.domain.model.VolumeAction
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
@@ -295,7 +296,27 @@ class TaskerBridgeTest {
         val obj = json.parseToJsonElement(respuesta).jsonObject
         assertEquals("error", obj["estado"]?.jsonPrimitive?.contentOrNull)
         assertEquals("fallo_ejecucion", obj["error"]?.jsonPrimitive?.contentOrNull)
-        assertEquals("Error: boom", obj["mensaje"]?.jsonPrimitive?.contentOrNull)
+        // Lote 11: e.message crudo NO llega al wire (se HABLA por TTS, H7) — mensaje
+        // saneado ADR-009 de fuente única; el detalle va a Log.w.
+        assertEquals("Error: No pudo completarse la acción.", obj["mensaje"]?.jsonPrimitive?.contentOrNull)
+    }
+
+    @Test
+    fun `CancellationException en execute se propaga sin fallo_ejecucion`() = runTest {
+        // EXTRA-1 (Lote 11, B5): el bridge re-lanza la cancelación (mismo contrato
+        // que TaskerMessageHandlerImpl) — con el withTimeoutOrNull del handler,
+        // tragarla dejaría la corrutina trabajando tras el timeout. try/catch
+        // manual (P2-1 — nunca assertFailsWith sobre llamada suspendida).
+        coEvery { systemAction.execute(any()) } throws CancellationException("cancel")
+
+        val ex = try {
+            handle("""{"version":1,"accion":"abrir_app","aplicacion":"x"}""")
+            null
+        } catch (e: CancellationException) {
+            e
+        }
+
+        assertTrue("la cancelación debe propagarse, no completar con fallo_ejecucion", ex is CancellationException)
     }
 
     @Test

@@ -16,7 +16,7 @@ class TimerAction @Inject constructor(
         // precedente B2 en AlarmAction.setAlarm). Fuera de [1, 1440] → error sin
         // tocar context (ningún startActivity).
         if (minutes !in SystemCommand.TIMER_MIN_MINUTOS..SystemCommand.TIMER_MAX_MINUTOS) {
-            return "Error: La duración debe estar entre 1 minuto y 24 horas."
+            return SystemCommand.TIMER_ERROR_MENSAJE
         }
         return try {
             val intent = Intent(AlarmClock.ACTION_SET_TIMER).apply {

@@ -2,6 +2,7 @@ package com.screenassistant.core.data.remote
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.util.Log
 import com.google.ai.client.generativeai.GenerativeModel
 import com.google.ai.client.generativeai.type.Content
 import com.google.ai.client.generativeai.type.FunctionResponsePart
@@ -13,11 +14,23 @@ import com.screenassistant.core.domain.model.ActionResult
 import com.screenassistant.core.domain.model.ImageData
 import com.screenassistant.core.domain.model.SystemCommand
 import com.screenassistant.core.domain.repository.MemoryRepository
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.mapNotNull
 import javax.inject.Inject
+
+private const val TAG = "GeminiRepository"
+
+// M3 (Lote 11): fallo técnico genérico — fuente ÚNICA del repo. sendMessage y
+// streamMessage comparten byte a byte el mismo texto (cero deriva entre caminos);
+// el detalle del error va a logcat (Log.w), nunca al usuario (ADR-009). Constante
+// top-level private: GeminiRepositoryImpl no tiene companion (fija la ambigüedad
+// del diseño Lote 11 §2.1).
+private const val FALLO_TECNICO_GENERICO =
+    "He tenido un problema técnico momentáneo. Inténtalo de nuevo en un segundo."
 
 // M24 (Lote 10): renombrado a *Impl — un nombre = un concepto (precedente
 // ScreenContextRepositoryImpl). La interfaz vive en core:domain/repository.
@@ -248,6 +261,10 @@ class GeminiRepositoryImpl @Inject constructor(
 
             response.text ?: "Entendido."
 
+        } catch (e: CancellationException) {
+            // B5 (Lote 11, decisión A): la cancelación del scope NUNCA se traga —
+            // el catch genérico la convertiría en mensaje y completaría el job.
+            throw e
         } catch (e: QuotaExceededException) {
             "He hablado mucho por ahora. Espera unos segundos y volvemos a charlar."
         } catch (e: Exception) {
@@ -256,7 +273,7 @@ class GeminiRepositoryImpl @Inject constructor(
                 chat = null
                 "He tenido un pequeño error de formato. Por favor, ¿podrías repetirme lo último?"
             } else {
-                "He tenido un problema técnico momentáneo. Inténtalo de nuevo en un segundo."
+                FALLO_TECNICO_GENERICO
             }
         }
     }
@@ -277,14 +294,20 @@ class GeminiRepositoryImpl @Inject constructor(
                 // RE-LANZA — contrato del repo.
                 ?.catch { e: Throwable ->
                     if (e is java.io.IOException) {
-                        emit("Error en streaming: ${e.message}")
+                        Log.w(TAG, "Error en streaming", e)
+                        emit(FALLO_TECNICO_GENERICO)
                     } else {
                         throw e
                     }
                 }
                 ?: kotlinx.coroutines.flow.flowOf("No pude inicializar el modelo de IA.")
+        } catch (e: CancellationException) {
+            // B5 (Lote 11, decisión A): mismo contrato que sendMessage — la
+            // cancelación se propaga, nunca se convierte en flujo de error.
+            throw e
         } catch (e: Exception) {
-            kotlinx.coroutines.flow.flowOf("Error en streaming: ${e.message}")
+            Log.w(TAG, "Error en streaming", e)
+            flowOf(FALLO_TECNICO_GENERICO)
         }
     }
 
