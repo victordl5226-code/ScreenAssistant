@@ -8,7 +8,9 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 @Database(
     entities = [MemoryEntity::class, PendingMessageEntity::class, AlarmEntity::class],
     version = 3,
-    exportSchema = false
+    // Lote 12 (M6): exportSchema=true emite los JSON de esquema a core/data/schemas
+    // (room.schemaLocation) para MigrationTestHelper. Cero impacto runtime.
+    exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun memoryDao(): MemoryDao

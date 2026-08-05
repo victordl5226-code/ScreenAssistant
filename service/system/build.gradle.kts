@@ -3,6 +3,7 @@ plugins {
     id("org.jetbrains.kotlin.android")
     id("com.google.dagger.hilt.android")
     id("com.google.devtools.ksp")
+    id("jacoco")
 }
 
 android {
@@ -26,6 +27,75 @@ android {
     // lanzar "not mocked" (los tests mockean todo lo demás con MockK).
     testOptions {
         unitTests.isReturnDefaultValues = true
+    }
+
+    // Lote 12 (M13): cobertura JaCoCo del módulo.
+    buildTypes {
+        debug {
+            enableUnitTestCoverage = true
+        }
+    }
+}
+
+// Lote 12 (M13): JaCoCo por módulo — recetario canónico del diseño (report +
+// verification custom con exclusiones de generados Hilt/Room/KSP y dependsOn
+// interno de testDebugUnitTest, P2-3).
+jacoco {
+    toolVersion = libs.versions.jacoco.get()
+}
+
+private val jacocoClassFilter = listOf(
+    "**/BuildConfig*",
+    "**/R.class",
+    "**/R$*.class",
+    "**/hilt_aggregated_deps/**",
+    "**/Hilt_*.class",
+    "**/*_HiltModules*",
+    "**/*_HiltComponents*",
+    "**/Dagger*",
+    "**/*_Factory.class",
+    "**/*_Impl.class",
+    "**/*_GeneratedInjector.class"
+)
+
+private fun jacocoClassTree(): FileTree = fileTree("$buildDir/tmp/kotlin-classes/debug") {
+    exclude(jacocoClassFilter)
+}
+
+private fun jacocoSources(): FileCollection = files("src/main/java", "src/main/kotlin")
+
+private fun jacocoExec(): FileTree = fileTree("$buildDir/outputs/unit_test_code_coverage/debugUnitTest") {
+    include("*.exec")
+}
+
+tasks.register<JacocoReport>("jacocoTestReport") {
+    group = "verification"
+    description = "Reporte JaCoCo del módulo (cobertura de testDebugUnitTest)."
+    dependsOn("testDebugUnitTest") // P2-3: .exec SIEMPRE fresco
+    reports {
+        xml.required.set(true)
+        html.required.set(true)
+    }
+    classDirectories.setFrom(jacocoClassTree())
+    sourceDirectories.setFrom(jacocoSources())
+    executionData.setFrom(jacocoExec())
+}
+
+tasks.register<JacocoCoverageVerification>("jacocoTestCoverageVerification") {
+    group = "verification"
+    description = "Verificación de cobertura JaCoCo del módulo (enforcement del gate)."
+    dependsOn("testDebugUnitTest") // P2-3: .exec SIEMPRE fresco
+    classDirectories.setFrom(jacocoClassTree())
+    sourceDirectories.setFrom(jacocoSources())
+    executionData.setFrom(jacocoExec())
+    // Fase B (Lote 12): umbral calibrado = medición Fase A (65.07%) − 0.05.
+    violationRules {
+        rule {
+            limit {
+                counter = "INSTRUCTION"
+                minimum = BigDecimal("0.60")
+            }
+        }
     }
 }
 

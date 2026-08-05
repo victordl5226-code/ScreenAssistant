@@ -6,6 +6,7 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.devtools.ksp")
     id("com.google.dagger.hilt.android")
+    id("jacoco")
 }
 
 android {
@@ -62,6 +63,70 @@ android {
         compose = true
         buildConfig = true
     }
+
+    // Lote 12 (M13): cobertura JaCoCo del módulo (report-only, P2-1 — ver abajo).
+    buildTypes {
+        debug {
+            enableUnitTestCoverage = true
+        }
+    }
+}
+
+// Lote 12 (M13): JaCoCo por módulo — recetario canónico del diseño. :app es
+// REPORT-ONLY (P2-1, decisión del Arquitecto): su cobertura JVM es
+// estructuralmente baja (composables/Activity/DI no se testean en JVM) y la real
+// de UI llega vía androidTest (que JaCoCo no mide sin dispositivo) → la
+// verification se registra SIN violationRules y NO entra en la tarea `gate`.
+// El report queda disponible bajo demanda: gradlew :app:jacocoTestReport.
+jacoco {
+    toolVersion = libs.versions.jacoco.get()
+}
+
+private val jacocoClassFilter = listOf(
+    "**/BuildConfig*",
+    "**/R.class",
+    "**/R$*.class",
+    "**/hilt_aggregated_deps/**",
+    "**/Hilt_*.class",
+    "**/*_HiltModules*",
+    "**/*_HiltComponents*",
+    "**/Dagger*",
+    "**/*_Factory.class",
+    "**/*_Impl.class",
+    "**/*_GeneratedInjector.class"
+)
+
+private fun jacocoClassTree(): FileTree = fileTree("$buildDir/tmp/kotlin-classes/debug") {
+    exclude(jacocoClassFilter)
+}
+
+private fun jacocoSources(): FileCollection = files("src/main/java", "src/main/kotlin")
+
+private fun jacocoExec(): FileTree = fileTree("$buildDir/outputs/unit_test_code_coverage/debugUnitTest") {
+    include("*.exec")
+}
+
+tasks.register<JacocoReport>("jacocoTestReport") {
+    group = "verification"
+    description = "Reporte JaCoCo del módulo (cobertura de testDebugUnitTest)."
+    dependsOn("testDebugUnitTest") // P2-3: .exec SIEMPRE fresco
+    reports {
+        xml.required.set(true)
+        html.required.set(true)
+    }
+    classDirectories.setFrom(jacocoClassTree())
+    sourceDirectories.setFrom(jacocoSources())
+    executionData.setFrom(jacocoExec())
+}
+
+tasks.register<JacocoCoverageVerification>("jacocoTestCoverageVerification") {
+    group = "verification"
+    description = "Verificación JaCoCo de :app — REPORT-ONLY (P2-1): sin violationRules, excluida del gate."
+    dependsOn("testDebugUnitTest") // P2-3: .exec SIEMPRE fresco
+    classDirectories.setFrom(jacocoClassTree())
+    sourceDirectories.setFrom(jacocoSources())
+    executionData.setFrom(jacocoExec())
+    // Sin violationRules a propósito (P2-1): el umbral de :app es deuda registrada.
 }
 
 dependencies {
@@ -107,4 +172,9 @@ dependencies {
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
+
+    // Lote 12 (M13): androidTest mínimo (Compose puro, sin espresso ni hilt-testing)
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.rules)
 }

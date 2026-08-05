@@ -2,6 +2,7 @@ plugins {
     id("java-library")
     id("org.jetbrains.kotlin.jvm")
     id("org.jetbrains.kotlin.plugin.serialization")
+    id("jacoco")
 }
 
 java {
@@ -12,6 +13,32 @@ java {
 kotlin {
     compilerOptions {
         jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11)
+    }
+}
+
+// Lote 12 (M13): JaCoCo — módulo JVM puro: las tareas jacocoTestReport /
+// jacocoTestCoverageVerification son las NATIVAS del plugin (nacen con java) y
+// ya dependen de `test` automáticamente (P2-3 no aplica aquí).
+jacoco {
+    toolVersion = libs.versions.jacoco.get()
+}
+
+tasks.named<JacocoReport>("jacocoTestReport") {
+    reports {
+        xml.required.set(true)
+        html.required.set(true)
+    }
+}
+
+tasks.named<JacocoCoverageVerification>("jacocoTestCoverageVerification") {
+    // Fase B (Lote 12): umbral calibrado = medición Fase A (91.02%) − 0.05.
+    violationRules {
+        rule {
+            limit {
+                counter = "INSTRUCTION"
+                minimum = BigDecimal("0.86")
+            }
+        }
     }
 }
 
