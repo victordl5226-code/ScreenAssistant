@@ -70,6 +70,10 @@ core/*/build/
 feature/*/build/
 service/*/build/
 
+# Large model files (>100MB - use Git LFS or exclude)
+*.gguf
+core/ai/local/models/
+
 # Local Gradle
 local_gradle_home/
 
