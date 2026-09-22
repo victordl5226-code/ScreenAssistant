@@ -16,6 +16,13 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Floating AI Assistant overlay for screen interaction" />
         </service>
+
+        <!-- Hotword Detection: escucha continua de "Hey JARVIS" en background -->
+        <service
+            android:name="com.screenassistant.feature.overlay.hotword.HotwordListeningService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
     </application>
 
 </manifest>

@@ -1,14 +1,86 @@
-*.iml
-.gradle
-/local.properties
-/.idea
-.DS_Store
+# Built application files
+*.apk
+*.aar
+*.ap_
+*.aab
+
+# Files for the ART/Dalvik VM
+*.dex
+
+# Java class files
+*.class
+
+# Generated files
+bin/
+gen/
+out/
+release/
+
+# Gradle files
+.gradle/
 build/
-/captures
-.externalNativeBuild
-.cxx
+
+# Local configuration file (sdk path, etc)
 local.properties
+
+# Android Studio
+/.idea/
+*.iml
+*.iws
+*.ipr
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Kotlin
 .kotlin/
+
+# macOS
+.DS_Store
 
 # Secrets (API keys, tokens, etc.)
 secrets.properties
+*.jks
+*.keystore
+
+# NDK
+obj/
+jniLibs/
+
+# Lint
+lint/intermediates/
+lint/generated/
+lint/outputs/
+lint/tmp/
+
+# Google Services
+google-services.json
+
+# Signing
+signing.properties
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+
+# Build outputs
+app/build/
+core/*/build/
+feature/*/build/
+service/*/build/
+
+# Local Gradle
+local_gradle_home/
+
+# Database files (local only)
+*.db
+*.db-shm
+*.db-wal
+
+# Screenshots and docs (keep in repo but ignore generated)
+# docs/*.png  # Uncomment if you want to ignore screenshots
+
+# Logs
+*.log
+hs_err_pid*

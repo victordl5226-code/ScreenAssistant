@@ -34,6 +34,98 @@ sealed class SystemCommand {
     data object ReadNotes : SystemCommand()
     data class ReadNote(val query: String) : SystemCommand()
 
+    // ===== Fase 1: Capacidades offline =====
+
+    // --- Calculadora ---
+    data class Calculate(
+        val operand1: Double,
+        val operator: CalculatorOperator,
+        val operand2: Double
+    ) : SystemCommand()
+
+    /**
+     * MATH (ADR-MATH, P3): expresión canónica libre (`2+3*4`, `sqrt(81)`).
+     * NUEVO subtipo — [Calculate] binario CONGELADO (tests + codec + Tasker).
+     * INVARIANTE: `expression` es la forma CANÓNICA (no el texto libre);
+     * longitud ≤ 200 (la impone [MathEvaluator]).
+     */
+    data class CalculateExpression(val expression: String) : SystemCommand()
+
+    // --- Cronómetro ---
+    data class Stopwatch(val action: StopwatchAction) : SystemCommand()
+
+    // --- Info del dispositivo ---
+    data class DeviceInfo(val type: DeviceInfoType) : SystemCommand()
+
+    // --- Portapapeles ---
+    data class Clipboard(
+        val operation: ClipboardOperation,
+        val text: String? = null
+    ) : SystemCommand()
+
+    // --- Listar contactos ---
+    data object ListContacts : SystemCommand()
+
+    // --- Info WiFi ---
+    data object GetWifiInfo : SystemCommand()
+
+    // ===== Fase 2: Capacidades offline =====
+
+    // --- Bluetooth ---
+    data class SetBluetooth(val enabled: Boolean) : SystemCommand()
+
+    // --- Brillo ---
+    data class SetBrightness(val level: Int) : SystemCommand()
+
+    // --- Linterna ---
+    data class SetFlashlight(val enabled: Boolean) : SystemCommand()
+
+    // --- Modo avión ---
+    data class SetAirplaneMode(val enabled: Boolean) : SystemCommand()
+
+    // --- Datos móviles ---
+    data class SetMobileData(val enabled: Boolean) : SystemCommand()
+
+    // --- Abrir archivo ---
+    data class OpenFile(val query: String) : SystemCommand()
+
+    // --- Historial de llamadas ---
+    data object CallHistory : SystemCommand()
+
+    // ===== Fase 3: Capacidades offline con ML Kit =====
+
+    // --- Leer código QR ---
+    data object ScanQr : SystemCommand()
+
+    // --- OCR offline (leer texto de foto) ---
+    data object OcrScan : SystemCommand()
+
+    // --- Traducción offline ---
+    data class TranslateText(
+        val text: String,
+        val targetLanguage: TranslateLanguage
+    ) : SystemCommand()
+
+    // --- Reconocimiento facial ---
+    data object DetectFace : SystemCommand()
+
+    // ===== Fase 4: Hardware directo =====
+
+    // --- Vibración ---
+    data class Vibrate(val durationMs: Long) : SystemCommand()
+
+    // --- Ubicación GPS ---
+    data object GetLocation : SystemCommand()
+
+    // --- WiFi toggle ---
+    data class SetWifi(val enabled: Boolean) : SystemCommand()
+
+    // --- Captura de cámara ---
+    data class TakePhoto(val useFrontCamera: Boolean) : SystemCommand()
+
+    // --- Personalidad J.A.R.V.I.S. ---
+    data class SetAssistantMode(val mode: AssistantMode) : SystemCommand()
+
     companion object {
         // Fuente única de verdad del límite de caracteres de una nota por voz
         // (el parser NO trunca: el límite lo aplica la acción al guardar).
@@ -56,3 +148,15 @@ sealed class SystemCommand {
 enum class VolumeAction { UP, DOWN, MAX, MIN, MUTE }
 
 enum class AssistantLanguage { SPANISH, ENGLISH }
+
+// ===== Fase 1: Enums para capacidades offline =====
+enum class CalculatorOperator { ADD, SUBTRACT, MULTIPLY, DIVIDE }
+enum class StopwatchAction { START, STOP, GET_TIME }
+enum class DeviceInfoType { MODEL, BATTERY, STORAGE }
+enum class ClipboardOperation { COPY, PASTE, SHOW }
+
+// ===== Fase 3: Enums para ML Kit =====
+enum class TranslateLanguage { SPANISH, ENGLISH, FRENCH, GERMAN, PORTUGUESE, CHINESE, JAPANESE }
+
+// ===== Fase J.A.R.V.I.S.: Modos de Conciencia =====
+enum class AssistantMode { CENTINELA, TACTICO, SILENCIOSO }

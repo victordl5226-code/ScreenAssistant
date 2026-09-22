@@ -126,7 +126,8 @@ class CharacterState {
         )
     )
 
-    private var currentOutfitIndex by mutableIntStateOf(0)
+    var currentOutfitIndex by mutableIntStateOf(0)
+        private set
 
     var currentOutfitRes by mutableStateOf<Int?>(null)
     var animationState by mutableStateOf(AnimationState.IDLE)
@@ -157,6 +158,13 @@ class CharacterState {
         currentOutfitIndex = (currentOutfitIndex + 1) % library.size
         // Resetear la animación a IDLE al cambiar de ropa para feedback inmediato
         animationState = AnimationState.IDLE
+    }
+
+    fun setOutfit(index: Int) {
+        if (index in library.indices) {
+            currentOutfitIndex = index
+            // Opcional: resetear animación o mantener la actual si aplica
+        }
     }
 
     fun updateAnimation(state: AnimationState) {

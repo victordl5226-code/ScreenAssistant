@@ -63,13 +63,12 @@ class ApiKeyViewModel @Inject constructor(
         }
 
         apiKeyProvider.storeApiKey(trimmed)
-        _uiState.value = UiState(
-            input = "",
-            isConfigured = true,
-            maskedKey = mask(trimmed),
-            isDegraded = _uiState.value.isDegraded,
-            error = null
-        )
+        // V1 DBG-veredicto: re-lee el estado REAL en vez de marcar isConfigured
+        // a ciegas (contrato fail-soft M18: storeApiKey puede tragar fallos).
+        // refresh() deja isConfigured/maskedKey/isDegraded desde la leída;
+        // aquí solo se limpia input/error preservando ese estado real.
+        refresh()
+        _uiState.value = _uiState.value.copy(input = "", error = null)
     }
 
     fun clearKey() {

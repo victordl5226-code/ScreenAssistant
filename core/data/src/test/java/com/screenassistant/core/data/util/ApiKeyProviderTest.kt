@@ -82,11 +82,11 @@ class ApiKeyProviderTest {
 
         assertEquals("AIza-build", provider.getApiKey())
         verify(exactly = 1) { editor.putBoolean("api_key_seeded", true) }
-        verify(exactly = 1) { editor.putString("gemini_api_key", "AIza-build") }
+        verify(exactly = 1) { editor.putString("openrouter_api_key", "AIza-build") }
 
         // Segunda siembra: el flag ya está → cero escrituras nuevas.
         provider.sembrarDesdeBuildConfig("OTRA-KEY")
-        verify(exactly = 1) { editor.putString("gemini_api_key", any()) }
+        verify(exactly = 1) { editor.putString("openrouter_api_key", any()) }
     }
 
     // 3. B4: tras clear NO se re-siembra (el flag persiste; el control es del usuario).
@@ -100,6 +100,6 @@ class ApiKeyProviderTest {
         // El flag sigue → la siembra posterior es no-op (no re-escribe la key).
         provider.sembrarDesdeBuildConfig("AIza-build")
         assertEquals("", provider.getApiKey())
-        verify(exactly = 1) { editor.putString("gemini_api_key", any()) }
+        verify(exactly = 1) { editor.putString("openrouter_api_key", any()) }
     }
 }

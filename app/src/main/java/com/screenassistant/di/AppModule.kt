@@ -5,8 +5,11 @@ import androidx.room.Room
 import com.screenassistant.core.data.local.ActiveAlarmStore
 import com.screenassistant.core.data.local.AlarmDao
 import com.screenassistant.core.data.local.AppDatabase
+import com.screenassistant.core.data.local.ConversationTurnDao
 import com.screenassistant.core.data.local.MemoryDao
 import com.screenassistant.core.data.local.MessageDao
+import com.screenassistant.core.data.local.ProactiveRuleDao
+import com.screenassistant.core.data.local.UserPatternDao
 import com.screenassistant.core.data.local.MessageQueueManager
 import com.screenassistant.core.data.util.ApiKeyProvider
 import com.screenassistant.core.data.util.PuenteConfigStore
@@ -14,36 +17,23 @@ import com.screenassistant.core.domain.action.SystemAction
 import com.screenassistant.core.domain.bridge.CommandBridge
 import com.screenassistant.core.domain.bridge.SystemCommandJsonCodec
 import com.screenassistant.core.domain.di.IoDispatcher
+import com.screenassistant.core.domain.model.AssistantLanguage
 import com.screenassistant.core.domain.repository.GeminiRepository
 import com.screenassistant.core.domain.repository.MemoryRepository
 import com.screenassistant.core.domain.repository.ScreenContextRepository
 import com.screenassistant.core.domain.service.TextToSpeech
+import com.screenassistant.core.domain.usecase.AnalyzeScreenUseCase
 import com.screenassistant.core.domain.usecase.CaptureScreenContextUseCase
+import com.screenassistant.core.domain.usecase.MultiStepExecutor
+import com.screenassistant.core.domain.usecase.MultiStepExecutorImpl
+import com.screenassistant.core.domain.usecase.ScreenAnalysisPromptBuilder
+import com.screenassistant.core.domain.usecase.SequenceParser
+import com.screenassistant.core.domain.usecase.SequenceParserImpl
 import com.screenassistant.core.domain.usecase.SystemCommandParser
 import com.screenassistant.feature.overlay.TextToSpeechManager
 import com.screenassistant.service.system.SystemActionHandler
-import com.screenassistant.service.system.action.AlarmAction
-import com.screenassistant.service.system.action.AlarmNotificationHelper
-import com.screenassistant.service.system.action.AppLauncherAction
-import com.screenassistant.service.system.action.CallAction
-import com.screenassistant.service.system.action.MediaAction
-import com.screenassistant.service.system.action.MessagingAction
-import com.screenassistant.service.system.action.SearchAction
-import com.screenassistant.service.system.action.SettingsAction
-import com.screenassistant.service.system.action.SystemVolumeAction
-import com.screenassistant.service.system.action.TimerAction
-import com.screenassistant.service.system.action.LanguageAction
-import com.screenassistant.service.system.action.MapsAction
-import com.screenassistant.service.system.action.MemoryAction
-import com.screenassistant.service.system.action.NoteAction
-import com.screenassistant.service.system.bridge.AutoRemoteUrlCallback
-import com.screenassistant.service.system.bridge.HttpUrlSender
-import com.screenassistant.service.system.bridge.SystemCommandBridgeImpl
-import com.screenassistant.service.system.bridge.TaskerMessageHandler
-import com.screenassistant.service.system.bridge.TaskerMessageHandlerImpl
-import com.screenassistant.service.system.bridge.TaskerResponseEmitter
-import com.screenassistant.service.system.bridge.TaskerResponseEmitterImpl
-import com.screenassistant.service.system.bridge.UrlSender
+import com.screenassistant.service.system.action.*
+import com.screenassistant.service.system.bridge.*
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -65,77 +55,66 @@ object AppModule {
             AppDatabase::class.java,
             "assistant_db"
         )
-            // QA #2: migración explícita v2→v3 (tabla alarms); la destructiva
-            // queda solo como último recurso para versiones sin migración.
-            .addMigrations(AppDatabase.MIGRATION_2_3)
-            .fallbackToDestructiveMigration()
+            .addMigrations(
+                AppDatabase.MIGRATION_2_3,
+                AppDatabase.MIGRATION_3_4,
+                AppDatabase.MIGRATION_4_5,
+                AppDatabase.MIGRATION_5_6
+            )
             .build()
     }
 
     @Provides
-    fun provideMemoryDao(database: AppDatabase): MemoryDao {
-        return database.memoryDao()
-    }
+    fun provideMemoryDao(database: AppDatabase): MemoryDao = database.memoryDao()
 
     @Provides
-    fun provideMessageDao(database: AppDatabase): MessageDao {
-        return database.messageDao()
-    }
+    fun provideMessageDao(database: AppDatabase): MessageDao = database.messageDao()
 
     @Provides
-    fun provideAlarmDao(database: AppDatabase): AlarmDao {
-        return database.alarmDao()
-    }
+    fun provideAlarmDao(database: AppDatabase): AlarmDao = database.alarmDao()
 
-    // SystemAction (interfaz domain) → SystemActionHandler
     @Provides
-    @Singleton
-    fun provideSystemAction(actionHandler: SystemActionHandler): SystemAction {
-        return actionHandler
-    }
+    fun provideConversationTurnDao(database: AppDatabase): ConversationTurnDao = database.conversationTurnDao()
+
+    @Provides
+    fun provideUserPatternDao(database: AppDatabase): UserPatternDao = database.userPatternDao()
+
+    @Provides
+    fun provideProactiveRuleDao(database: AppDatabase): ProactiveRuleDao = database.proactiveRuleDao()
 
     @Provides
     @Singleton
-    fun provideSystemCommandParser(systemAction: SystemAction): SystemCommandParser {
-        return SystemCommandParser(systemAction)
-    }
-
-    // === Puente Tasker (Lote 5 / Fase 1) ===
+    fun provideSystemAction(actionHandler: SystemActionHandler): SystemAction = actionHandler
 
     @Provides
     @Singleton
-    fun provideSystemCommandJsonCodec(): SystemCommandJsonCodec {
-        return SystemCommandJsonCodec()
-    }
+    fun provideSystemCommandParser(systemAction: SystemAction): SystemCommandParser = SystemCommandParser(systemAction)
+
+    @Provides
+    @Singleton
+    fun provideSequenceParser(): SequenceParser = SequenceParserImpl()
+
+    @Provides
+    @Singleton
+    fun provideMultiStepExecutor(
+        systemAction: SystemAction,
+        @IoDispatcher ioDispatcher: CoroutineDispatcher
+    ): MultiStepExecutor = MultiStepExecutorImpl(systemAction, ioDispatcher, maxSteps = 10)
+
+    @Provides
+    @Singleton
+    fun provideSystemCommandJsonCodec(): SystemCommandJsonCodec = SystemCommandJsonCodec()
 
     @Provides
     @Singleton
     fun provideCommandBridge(
         systemAction: SystemAction,
         codec: SystemCommandJsonCodec
-    ): CommandBridge {
-        return SystemCommandBridgeImpl(systemAction, codec)
-    }
+    ): CommandBridge = SystemCommandBridgeImpl(systemAction, codec)
 
-    // === Puente Tasker — Fase 2 (Lote 6 / ADR-014): transporte ===
-
-    // (a) TTS — canal humano (D4/T4): binding HILT NUEVO TextToSpeech → TextToSpeechManager.
-    // Riesgo aceptado (H7): coexisten dos instancias TTS (overlay y puente), cada una
-    // con su PROPIO motor → riesgo real = habla SIMULTÁNEA de dos motores si coinciden,
-    // no colisión de cola; uso secuencial aceptado (guion Tasker no corre con el overlay
-    // hablando a la vez). Reutilizar la del overlay sería un refactor fuera de alcance.
     @Provides
     @Singleton
-    fun provideTextToSpeech(@ApplicationContext context: Context): TextToSpeech {
-        return TextToSpeechManager(context)
-    }
-
-    // === Puente Tasker — Fase 3A (Lote 7 / ADR-015 v1.2): token F1, privacidad F2, URL F3 ===
-    // 4 providers (O2): el STORE no lleva @Provides — creación ÚNICA vía
-    // @Inject constructor + @Singleton (precedente TaskerMessageHandlerImpl).
-    // ApiKeyProvider conserva su @Provides por la carga inicial con BuildConfig
-    // (caso distinto, no replicado). ELIMINADO en v1.2: provideTaskerOrigenVerifier
-    // (muerto con el veto B1/H1, ADR-015 §2.6).
+    fun provideTextToSpeech(@ApplicationContext context: Context): TextToSpeech = TextToSpeechManager(context)
 
     @Provides
     @Singleton
@@ -143,27 +122,19 @@ object AppModule {
         bridge: CommandBridge,
         codec: SystemCommandJsonCodec,
         configStore: PuenteConfigStore,
-    ): TaskerMessageHandler {
-        return TaskerMessageHandlerImpl(bridge, codec, configStore)
-    }
+    ): TaskerMessageHandler = TaskerMessageHandlerImpl(bridge, codec, configStore)
 
-    // Sin @Inject constructor (precedente AlarmAction): se provee aquí con
-    // @ApplicationContext (el Context sin calificador no es inyectable por Hilt).
     @Provides
     @Singleton
     fun provideTaskerResponseEmitter(
         @ApplicationContext context: Context,
         tts: TextToSpeech,
         configStore: PuenteConfigStore,
-    ): TaskerResponseEmitter {
-        return TaskerResponseEmitterImpl(context, tts, configStore)
-    }
+    ): TaskerResponseEmitter = TaskerResponseEmitterImpl(context, tts, configStore)
 
     @Provides
     @Singleton
-    fun provideUrlSender(): UrlSender {
-        return HttpUrlSender()
-    }
+    fun provideUrlSender(): UrlSender = HttpUrlSender()
 
     @Provides
     @Singleton
@@ -171,19 +142,30 @@ object AppModule {
         configStore: PuenteConfigStore,
         urlSender: UrlSender,
         @IoDispatcher io: CoroutineDispatcher,
-    ): AutoRemoteUrlCallback {
-        return AutoRemoteUrlCallback(configStore, urlSender, io)
-    }
+    ): AutoRemoteUrlCallback = AutoRemoteUrlCallback(configStore, urlSender, io)
 
     @Provides
     @Singleton
     fun provideCaptureScreenContextUseCase(
         screenContextRepository: ScreenContextRepository
-    ): CaptureScreenContextUseCase {
-        return CaptureScreenContextUseCase(screenContextRepository)
-    }
+    ): CaptureScreenContextUseCase = CaptureScreenContextUseCase(screenContextRepository)
 
-    // === Acciones especializadas ===
+    @Provides
+    @Singleton
+    fun provideAssistantLanguage(): AssistantLanguage = AssistantLanguage.SPANISH
+
+    @Provides
+    @Singleton
+    fun provideScreenAnalysisPromptBuilder(assistantLanguage: AssistantLanguage): ScreenAnalysisPromptBuilder = ScreenAnalysisPromptBuilder(assistantLanguage)
+
+    @Provides
+    @Singleton
+    fun provideAnalyzeScreenUseCase(
+        screenContextRepository: ScreenContextRepository,
+        geminiRepository: GeminiRepository,
+        promptBuilder: ScreenAnalysisPromptBuilder,
+        @IoDispatcher ioDispatcher: CoroutineDispatcher
+    ): AnalyzeScreenUseCase = AnalyzeScreenUseCase(screenContextRepository, geminiRepository, promptBuilder, ioDispatcher)
 
     @Provides
     @Singleton
@@ -207,13 +189,8 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideAlarmNotificationHelper(
-        @ApplicationContext context: Context
-    ): AlarmNotificationHelper = AlarmNotificationHelper(context)
+    fun provideAlarmNotificationHelper(@ApplicationContext context: Context): AlarmNotificationHelper = AlarmNotificationHelper(context)
 
-    // AlarmAction tiene lambdas providers con valor por defecto (testabilidad);
-    // Dagger no soporta defaults en constructores @Inject → se provee explícitamente
-    // con los defaults de Kotlin (mismo patrón que NoteAction). Única vía de creación.
     @Provides
     @Singleton
     fun provideAlarmAction(
@@ -248,33 +225,90 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideLanguageAction(
-        geminiRepository: dagger.Lazy<GeminiRepository>
-    ): LanguageAction = LanguageAction(geminiRepository)
+    fun provideLanguageAction(geminiRepository: dagger.Lazy<GeminiRepository>): LanguageAction = LanguageAction(geminiRepository)
 
     @Provides
     @Singleton
-    fun provideMemoryAction(
-        memoryRepository: MemoryRepository
-    ): MemoryAction = MemoryAction(memoryRepository)
+    fun provideMemoryAction(memoryRepository: MemoryRepository): MemoryAction = MemoryAction(memoryRepository)
 
-    // NoteAction tiene params con valor por defecto (lambdas de test); Dagger no
-    // soporta defaults en constructores @Inject → se provee explícitamente con los
-    // defaults de Kotlin (mismo patrón que el resto de acciones).
     @Provides
     @Singleton
     fun provideNoteAction(@ApplicationContext context: Context): NoteAction = NoteAction(context)
 
-    // ApiKeyProvider: la siembra inicial desde BuildConfig se movió a
-    // ScreenAssistantApp.onCreate (B4, Lote 8) — Dagger es lazy y el primer
-    // @Provides se disparaba en la primera inyección, no en el arranque.
     @Provides
     @Singleton
-    fun provideApiKeyProvider(@ApplicationContext context: Context): ApiKeyProvider {
-        return ApiKeyProvider(context)
-    }
+    fun provideCalculatorAction(): CalculatorAction = CalculatorAction()
+
+    @Provides
+    @Singleton
+    fun provideStopwatchAction(): StopwatchActionProvider = StopwatchActionProvider()
+
+    @Provides
+    @Singleton
+    fun provideDeviceInfoAction(@ApplicationContext context: Context): DeviceInfoAction = DeviceInfoAction(context)
+
+    @Provides
+    @Singleton
+    fun provideClipboardAction(@ApplicationContext context: Context): ClipboardAction = ClipboardAction(context)
+
+    @Provides
+    @Singleton
+    fun provideContactsAction(@ApplicationContext context: Context): ContactsAction = ContactsAction(context)
+
+    @Provides
+    @Singleton
+    fun provideWifiInfoAction(@ApplicationContext context: Context): WifiInfoAction = WifiInfoAction(context)
+
+    @Provides
+    @Singleton
+    fun provideBluetoothAction(@ApplicationContext context: Context): BluetoothAction = BluetoothAction(context)
+
+    @Provides
+    @Singleton
+    fun provideBrightnessAction(@ApplicationContext context: Context): BrightnessAction = BrightnessAction(context)
+
+    @Provides
+    @Singleton
+    fun provideFlashlightAction(@ApplicationContext context: Context): FlashlightAction = FlashlightAction(context)
+
+    @Provides
+    @Singleton
+    fun provideAirplaneModeAction(@ApplicationContext context: Context): AirplaneModeAction = AirplaneModeAction(context)
+
+    @Provides
+    @Singleton
+    fun provideMobileDataAction(@ApplicationContext context: Context): MobileDataAction = MobileDataAction(context)
+
+    @Provides
+    @Singleton
+    fun provideOpenFileAction(@ApplicationContext context: Context): OpenFileAction = OpenFileAction(context)
+
+    @Provides
+    @Singleton
+    fun provideCallHistoryAction(@ApplicationContext context: Context): CallHistoryAction = CallHistoryAction(context)
+
+    @Provides
+    @Singleton
+    fun provideQrScanAction(@ApplicationContext context: Context): QrScanAction = QrScanAction(context)
+
+    @Provides
+    @Singleton
+    fun provideOcrAction(@ApplicationContext context: Context): OcrAction = OcrAction(context)
+
+    @Provides
+    @Singleton
+    fun provideTranslateAction(@ApplicationContext context: Context): TranslateAction = TranslateAction(context)
+
+    @Provides
+    @Singleton
+    fun provideFaceDetectionAction(@ApplicationContext context: Context): FaceDetectionAction = FaceDetectionAction(context)
+
+    @Provides
+    @Singleton
+    fun provideApiKeyProvider(@ApplicationContext context: Context): ApiKeyProvider = ApiKeyProvider(context)
 
     @Provides
     @Singleton
     @IoDispatcher
-    fun provideIoDispatcher(): CoroutineDispatcher = Dispatchers.IO}
+    fun provideIoDispatcher(): CoroutineDispatcher = Dispatchers.IO
+}

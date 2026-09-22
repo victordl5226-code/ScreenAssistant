@@ -69,7 +69,11 @@ class AppDatabaseMigrationTest {
         }
         helper.runMigrationsAndValidate("mig-datos", 3, true, AppDatabase.MIGRATION_2_3)
 
-        val db = Room.databaseBuilder(context, AppDatabase::class.java, "mig-datos").build()
+        // La DB se migra de v3→v6 porque AppDatabase ahora es v6.
+        // MIGRATION_3_4 crea tablas nuevas + MIGRATION_4_5 crea tablas IoT + MIGRATION_5_6 crea escenas.
+        val db = Room.databaseBuilder(context, AppDatabase::class.java, "mig-datos")
+            .addMigrations(AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5, AppDatabase.MIGRATION_5_6)
+            .build()
         try {
             val memories = db.memoryDao().getAllMemories().first()
             assertEquals(2, memories.size)
@@ -97,7 +101,11 @@ class AppDatabaseMigrationTest {
         helper.createDatabase("mig-alarmas", 2).close()
         helper.runMigrationsAndValidate("mig-alarmas", 3, true, AppDatabase.MIGRATION_2_3)
 
-        val db = Room.databaseBuilder(context, AppDatabase::class.java, "mig-alarmas").build()
+        // La DB se migra de v3→v6 porque AppDatabase ahora es v6.
+        // MIGRATION_3_4 crea tablas nuevas + MIGRATION_4_5 crea tablas IoT + MIGRATION_5_6 crea escenas.
+        val db = Room.databaseBuilder(context, AppDatabase::class.java, "mig-alarmas")
+            .addMigrations(AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5, AppDatabase.MIGRATION_5_6)
+            .build()
         try {
             val alarm = AlarmEntity(
                 requestCode = 300, // 5:00 (hora*60+minuto)

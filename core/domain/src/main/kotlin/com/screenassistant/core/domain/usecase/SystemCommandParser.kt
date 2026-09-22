@@ -2,9 +2,11 @@ package com.screenassistant.core.domain.usecase
 
 import com.screenassistant.core.domain.action.SystemAction
 import com.screenassistant.core.domain.model.ActionResult
+import com.screenassistant.core.domain.model.AssistantMode
+import com.screenassistant.core.domain.model.CalculatorOperator
 import com.screenassistant.core.domain.model.CommandMarkers
 import com.screenassistant.core.domain.model.SystemCommand
-import kotlinx.coroutines.runBlocking
+import com.screenassistant.core.domain.usecase.math.MathExpressionNormalizer
 
 /**
  * Parser de comandos directos por voz.
@@ -24,6 +26,8 @@ import kotlinx.coroutines.runBlocking
 open class SystemCommandParser(
     private val systemAction: SystemAction
 ) {
+    val assistantMode = systemAction.assistantMode
+
     // H4: '.' admitido en la clase de separadores ("600.123.456"). El '.' llega aquí
     // porque la extracción usa el ORIGINAL (normalize convierte '.' en ' ' solo para
     // el dispatch sobre trimmed).
@@ -122,13 +126,14 @@ open class SystemCommandParser(
         "toma nota:", "tomar nota:", "toma nota ", "tomar nota "
     )
 
-    open fun parse(text: String): String? {
+    open suspend fun parse(text: String): String? {
         // O6: trim COMPLETO (no solo lowercase) — " busca gatos" debe parsear igual que
         // "busca gatos". normalize queda intocada (contrato: longitud invariante); el trim
         // se aplica también a original.trim() en extractAfterPrefix (ADR-010).
         val trimmed = normalize(text).trim()
 
         return when {
+            // ... (lógica remains the same but calls to execute are now suspend-safe)
             // 0. Notas (precedencia máxima: antes de ayuda/temporizador/alarma, que usan contains)
             NOTE_PREFIXES.any { prefix -> trimmed.startsWith(prefix) } -> {
                 // O6: trimmed ya llega trimado (los ¡/¿ iniciales se convirtieron en espacio
@@ -216,6 +221,34 @@ open class SystemCommandParser(
                 CommandMarkers.REPEAT
             }
 
+            // 2b. Monitoreo continuo → marcadores UI (sin handler)
+            // Frases: "activar monitoreo", "iniciar monitoreo", "encender monitoreo",
+            // "detener monitoreo", "parar monitoreo", "apagar monitoreo".
+            // V3 DBG-veredicto: los triggers de monitoreo son igualdad exacta/prefijo
+            // ("palabra", "palabra " o "palabra:"); los typos caen a IA por diseño.
+            trimmed == "activar monitoreo" || trimmed.startsWith("activar monitoreo ") || trimmed.startsWith("activar monitoreo:") ||
+            trimmed == "iniciar monitoreo" || trimmed.startsWith("iniciar monitoreo ") || trimmed.startsWith("iniciar monitoreo:") ||
+            trimmed == "encender monitoreo" || trimmed.startsWith("encender monitoreo ") || trimmed.startsWith("encender monitoreo:") -> {
+                CommandMarkers.START_MONITORING
+            }
+            trimmed == "detener monitoreo" || trimmed.startsWith("detener monitoreo ") || trimmed.startsWith("detener monitoreo:") ||
+            trimmed == "parar monitoreo" || trimmed.startsWith("parar monitoreo ") || trimmed.startsWith("parar monitoreo:") ||
+            trimmed == "apagar monitoreo" || trimmed.startsWith("apagar monitoreo ") || trimmed.startsWith("apagar monitoreo:") -> {
+                CommandMarkers.STOP_MONITORING
+            }
+
+            // 2c. Análisis visual de pantalla → marcador UI (sin handler)
+            // Frases: "analiza mi pantalla", "qué hay en mi pantalla", "analiza pantalla",
+            // "qué ves en mi pantalla", "analizar mi pantalla", "analizar pantalla".
+            trimmed == "analiza mi pantalla" || trimmed.startsWith("analiza mi pantalla ") || trimmed.startsWith("analiza mi pantalla:") ||
+            trimmed == "que hay en mi pantalla" || trimmed.startsWith("que hay en mi pantalla ") || trimmed.startsWith("que hay en mi pantalla:") ||
+            trimmed == "analiza pantalla" || trimmed.startsWith("analiza pantalla ") || trimmed.startsWith("analiza pantalla:") ||
+            trimmed == "que ves en mi pantalla" || trimmed.startsWith("que ves en mi pantalla ") || trimmed.startsWith("que ves en mi pantalla:") ||
+            trimmed == "analizar mi pantalla" || trimmed.startsWith("analizar mi pantalla ") || trimmed.startsWith("analizar mi pantalla:") ||
+            trimmed == "analizar pantalla" || trimmed.startsWith("analizar pantalla ") || trimmed.startsWith("analizar pantalla:") -> {
+                CommandMarkers.ANALYZE_SCREEN
+            }
+
             // 3. Temporizador (exige duración válida; sin duración → fall-through).
             //    O5: duración COMPUESTA — se suman todas las unidades y las fracciones
             //    "y media"/"y cuarto" ("1 hora y 30 minutos" → 90, "pasa 2 horas y media" → 150).
@@ -278,8 +311,10 @@ open class SystemCommandParser(
                 execute(SystemCommand.OpenSettings)
             }
 
-            // 8. Abrir app
-            trimmed.startsWith("abre ") || trimmed.startsWith("abrir ") -> {
+            // 8. Abrir app (excluye "abre el archivo" que va a rama 24)
+            (trimmed.startsWith("abre ") || trimmed.startsWith("abrir ")) &&
+                !trimmed.startsWith("abre el archivo") && !trimmed.startsWith("abrir archivo") &&
+                !trimmed.startsWith("abre archivo") && !trimmed.startsWith("buscar archivo") -> {
                 val query = extractAfterPrefix(trimmed, text, "abre ", "abrir ")
                 execute(SystemCommand.OpenApp(query))
             }
@@ -321,6 +356,281 @@ open class SystemCommandParser(
                 execute(SystemCommand.CancelAlarm(match?.time?.hour, match?.time?.minute))
             }
 
+            // ===== Fase 1: Capacidades offline =====
+
+            // 13. Listar contactos — ANTES deDeviceInfo y calculator (evitar overlap)
+            trimmed.startsWith("lista mis contactos") || trimmed.startsWith("listar mis contactos") ||
+            trimmed.startsWith("listar contactos") || trimmed.startsWith("lista contactos") ||
+            trimmed.startsWith("quienes son mis contactos") || trimmed.startsWith("quien son mis contactos") ||
+            trimmed.startsWith("mostrar contactos") || trimmed.startsWith("mostrar mis contactos") -> {
+                execute(SystemCommand.ListContacts)
+            }
+
+            // 14. Info WiFi
+            trimmed.startsWith("cual es mi wifi") || trimmed.startsWith("cual es mi red") ||
+            trimmed.startsWith("que wifi tengo") || trimmed.startsWith("que red tengo") ||
+            trimmed.startsWith("nombre de mi wifi") || trimmed.startsWith("nombre de mi red") ||
+            trimmed.startsWith("signal de wifi") || trimmed.startsWith("senal de wifi") ||
+            trimmed.startsWith("info del wifi") || trimmed.startsWith("informacion del wifi") ||
+            trimmed.startsWith("datos del wifi") || trimmed.startsWith("nivel de senal") -> {
+                execute(SystemCommand.GetWifiInfo)
+            }
+
+            // 15. Info del dispositivo — ANTES de calculator (evitar overlap "cuanto es")
+            trimmed.startsWith("que telefono tengo") || trimmed.startsWith("que celular tengo") ||
+            trimmed.startsWith("que modelo es mi telefono") || trimmed.startsWith("que modelo es mi celular") ||
+            trimmed.startsWith("que telefono es este") -> {
+                execute(SystemCommand.DeviceInfo(com.screenassistant.core.domain.model.DeviceInfoType.MODEL))
+            }
+            trimmed.startsWith("cuanta bateria queda") || trimmed.startsWith("cuanto bateria queda") ||
+            trimmed.startsWith("nivel de bateria") || trimmed.startsWith("cuanta bateria tengo") ||
+            trimmed.startsWith("cuanto bateria tengo") -> {
+                execute(SystemCommand.DeviceInfo(com.screenassistant.core.domain.model.DeviceInfoType.BATTERY))
+            }
+            trimmed.startsWith("cuanto espacio libre") || trimmed.startsWith("cuanto espacio tengo") ||
+            trimmed.startsWith("cuanto almacenamiento queda") || trimmed.startsWith("cuanto almacenamiento tengo") ||
+            trimmed.startsWith("espacio libre") -> {
+                execute(SystemCommand.DeviceInfo(com.screenassistant.core.domain.model.DeviceInfoType.STORAGE))
+            }
+
+            // 16. Portapapeles
+            trimmed == "copia" || trimmed == "copiar" || trimmed.startsWith("copia ") || trimmed.startsWith("copiar ") -> {
+                val textToCopy = if (trimmed == "copia" || trimmed == "copiar") "" else extractAfterPrefix(trimmed, text, "copia ", "copiar ")
+                if (textToCopy.isEmpty()) {
+                    "Error: ¿Qué quieres que copie?"
+                } else {
+                    execute(SystemCommand.Clipboard(com.screenassistant.core.domain.model.ClipboardOperation.COPY, textToCopy))
+                }
+            }
+            trimmed == "pega" || trimmed == "pegar" || trimmed.startsWith("pega ") || trimmed.startsWith("pegar ") -> {
+                execute(SystemCommand.Clipboard(com.screenassistant.core.domain.model.ClipboardOperation.PASTE))
+            }
+            trimmed.startsWith("que tengo copiado") || trimmed.startsWith("que hay en el portapapeles") ||
+            trimmed.startsWith("que tengo en el portapapeles") || trimmed.startsWith("contenido del portapapeles") -> {
+                execute(SystemCommand.Clipboard(com.screenassistant.core.domain.model.ClipboardOperation.SHOW))
+            }
+
+            // 17. Cronómetro
+            trimmed.startsWith("inicia cronometro") || trimmed.startsWith("arranca cronometro") ||
+            trimmed.startsWith("empieza cronometro") || trimmed.startsWith("iniciar cronometro") -> {
+                execute(SystemCommand.Stopwatch(com.screenassistant.core.domain.model.StopwatchAction.START))
+            }
+            trimmed.startsWith("para el cronometro") || trimmed.startsWith("para cronometro") ||
+            trimmed.startsWith("deten cronometro") || trimmed.startsWith("detener cronometro") ||
+            trimmed.startsWith("parar cronometro") || trimmed.startsWith("parar el cronometro") -> {
+                execute(SystemCommand.Stopwatch(com.screenassistant.core.domain.model.StopwatchAction.STOP))
+            }
+            trimmed.startsWith("cuanto tiempo lleva") || trimmed.startsWith("cuanto va el cronometro") ||
+            trimmed.startsWith("que tiempo lleva") || trimmed.startsWith("cuanto tiempo lleva el cronometro") ||
+            trimmed == "cronometro" -> {
+                execute(SystemCommand.Stopwatch(com.screenassistant.core.domain.model.StopwatchAction.GET_TIME))
+            }
+
+            // 18. Calculadora — DESPUÉS deDeviceInfo para evitar overlap "cuanto es"
+            trimmed.startsWith("cuanto es ") || trimmed.startsWith("que es ") ||
+            trimmed.startsWith("cuanto son ") || trimmed.startsWith("cuantos son ") ||
+            trimmed.startsWith("que son ") ||
+            trimmed.startsWith("suma ") || trimmed.startsWith("sumar ") ||
+            trimmed.startsWith("resta ") || trimmed.startsWith("restar ") ||
+            trimmed.startsWith("multiplica ") || trimmed.startsWith("multiplicar ") ||
+            trimmed.startsWith("divide ") || trimmed.startsWith("dividir ") -> {
+                parseCalculator(trimmed, text)
+            }
+
+            // ===== Fase 2: Capacidades offline =====
+
+            // 19. Bluetooth
+            trimmed.startsWith("activa el bluetooth") || trimmed.startsWith("activar bluetooth") ||
+            trimmed.startsWith("encender bluetooth") || trimmed.startsWith("enciende el bluetooth") ||
+            trimmed.startsWith("abre bluetooth") || trimmed.startsWith("abrir bluetooth") -> {
+                execute(SystemCommand.SetBluetooth(true))
+            }
+            trimmed.startsWith("desactiva el bluetooth") || trimmed.startsWith("desactivar bluetooth") ||
+            trimmed.startsWith("apagar bluetooth") || trimmed.startsWith("apaga el bluetooth") ||
+            trimmed.startsWith("cierra bluetooth") || trimmed.startsWith("cerrar bluetooth") -> {
+                execute(SystemCommand.SetBluetooth(false))
+            }
+
+            // 20. Brillo
+            trimmed.startsWith("pon el brillo al ") || trimmed.startsWith("pon brillo al ") ||
+            trimmed.startsWith("ajusta el brillo a ") || trimmed.startsWith("ajusta brillo a ") ||
+            trimmed.startsWith("brillo al ") -> {
+                val levelStr = extractAfterPrefix(trimmed, text,
+                    "pon el brillo al ", "pon brillo al ", "ajusta el brillo a ",
+                    "ajusta brillo a ", "brillo al ")
+                    .replace(Regex("""\s+por\s+ciento\s*"""), "")
+                    .replace(Regex("""\s*%\s*"""), "")
+                    .trim()
+                val level = levelStr.toIntOrNull()
+                if (level != null && level in 0..255) {
+                    execute(SystemCommand.SetBrightness(level))
+                } else {
+                    "Error: El brillo debe ser un número entre 0 y 255."
+                }
+            }
+            trimmed.startsWith("sube el brillo") || trimmed.startsWith("subir brillo") ||
+            trimmed.startsWith("aumenta el brillo") -> {
+                execute(SystemCommand.SetBrightness(-1)) // -1 = subir
+            }
+            trimmed.startsWith("baja el brillo") || trimmed.startsWith("bajar brillo") ||
+            trimmed.startsWith("reduce el brillo") -> {
+                execute(SystemCommand.SetBrightness(-2)) // -2 = bajar
+            }
+
+            // 21. Linterna
+            trimmed.startsWith("enciende la linterna") || trimmed.startsWith("activa la linterna") ||
+            trimmed.startsWith("encender linterna") || trimmed.startsWith("activar linterna") ||
+            trimmed.startsWith("prende la linterna") || trimmed == "linterna" -> {
+                execute(SystemCommand.SetFlashlight(true))
+            }
+            trimmed.startsWith("apaga la linterna") || trimmed.startsWith("desactiva la linterna") ||
+            trimmed.startsWith("apagar linterna") || trimmed.startsWith("desactivar linterna") ||
+            trimmed.startsWith("apaga linterna") -> {
+                execute(SystemCommand.SetFlashlight(false))
+            }
+
+            // 22. Modo avión
+            trimmed.startsWith("activa el modo avion") || trimmed.startsWith("activar modo avion") ||
+            trimmed.startsWith("pon modo avion") || trimmed.startsWith("enciende modo avion") ||
+            trimmed.startsWith("modos avion") -> {
+                execute(SystemCommand.SetAirplaneMode(true))
+            }
+            trimmed.startsWith("desactiva el modo avion") || trimmed.startsWith("desactivar modo avion") ||
+            trimmed.startsWith("quita modo avion") || trimmed.startsWith("apaga modo avion") -> {
+                execute(SystemCommand.SetAirplaneMode(false))
+            }
+
+            // 23. Datos móviles
+            trimmed.startsWith("activa los datos moviles") || trimmed.startsWith("activar datos moviles") ||
+            trimmed.startsWith("enciende los datos") || trimmed.startsWith("activa datos moviles") -> {
+                execute(SystemCommand.SetMobileData(true))
+            }
+            trimmed.startsWith("desactiva los datos moviles") || trimmed.startsWith("desactivar datos moviles") ||
+            trimmed.startsWith("apaga los datos") || trimmed.startsWith("desactiva datos moviles") -> {
+                execute(SystemCommand.SetMobileData(false))
+            }
+
+            // 24. Abrir archivo
+            trimmed.startsWith("abre el archivo ") || trimmed.startsWith("abrir archivo ") ||
+            trimmed.startsWith("abre archivo ") || trimmed.startsWith("buscar archivo ") -> {
+                val query = extractAfterPrefix(trimmed, text,
+                    "abre el archivo ", "abrir archivo ", "abre archivo ", "buscar archivo ")
+                execute(SystemCommand.OpenFile(query))
+            }
+
+            // 25. Historial de llamadas
+            trimmed.startsWith("historial de llamadas") || trimmed.startsWith("llamadas recientes") ||
+            trimmed.startsWith("que llamadas he hecho") || trimmed.startsWith("llamadas") -> {
+                execute(SystemCommand.CallHistory)
+            }
+
+            // ===== Fase 3: Capacidades offline con ML Kit =====
+
+            // 26. Leer código QR
+            trimmed.startsWith("escanea codigo qr") || trimmed.startsWith("escanear codigo qr") ||
+            trimmed.startsWith("lee el codigo qr") || trimmed.startsWith("leer codigo qr") ||
+            trimmed.startsWith("escanea qr") || trimmed.startsWith("codigo qr") -> {
+                execute(SystemCommand.ScanQr)
+            }
+
+            // 27. OCR offline
+            trimmed.startsWith("lee el texto de la pantalla") || trimmed.startsWith("leer texto de la pantalla") ||
+            trimmed.startsWith("que texto hay en la pantalla") || trimmed.startsWith("ocr") ||
+            trimmed.startsWith("lee la pantalla") || trimmed.startsWith("leer la pantalla") -> {
+                execute(SystemCommand.OcrScan)
+            }
+
+            // 28. Traducción offline
+            trimmed.startsWith("traduce ") || trimmed.startsWith("traducir ") -> {
+                val raw = extractAfterPrefix(trimmed, text, "traduce ", "traducir ")
+                val targetLang = when {
+                    raw.contains("al ingles") || raw.contains("a english") || raw.contains("en ingles") ->
+                        com.screenassistant.core.domain.model.TranslateLanguage.ENGLISH
+                    raw.contains("al frances") || raw.contains("a francais") || raw.contains("en frances") ->
+                        com.screenassistant.core.domain.model.TranslateLanguage.FRENCH
+                    raw.contains("al aleman") || raw.contains("a deutsch") || raw.contains("en aleman") ->
+                        com.screenassistant.core.domain.model.TranslateLanguage.GERMAN
+                    raw.contains("al portugues") || raw.contains("a portugues") || raw.contains("en portugues") ->
+                        com.screenassistant.core.domain.model.TranslateLanguage.PORTUGUESE
+                    raw.contains("al chino") || raw.contains("a chino") || raw.contains("en chino") ->
+                        com.screenassistant.core.domain.model.TranslateLanguage.CHINESE
+                    raw.contains("al japones") || raw.contains("a japones") || raw.contains("en japones") ->
+                        com.screenassistant.core.domain.model.TranslateLanguage.JAPANESE
+                    else -> com.screenassistant.core.domain.model.TranslateLanguage.ENGLISH
+                }
+                val textToTranslate = raw
+                    .replace(Regex("""\s*al?\s+(?:ingles|english|frances|francais|aleman|deutsch|portugues|portugais|chino|chinese|japones|japanese)\s*"""), "")
+                    .trim()
+                if (textToTranslate.isEmpty()) {
+                    "Error: ¿Qué texto quieres que traduzca?"
+                } else {
+                    execute(SystemCommand.TranslateText(textToTranslate, targetLang))
+                }
+            }
+
+            // 29. Reconocimiento facial
+            trimmed.startsWith("detecta caras") || trimmed.startsWith("detectar caras") ||
+            trimmed.startsWith("hay caras") || trimmed.startsWith("reconoce caras") ||
+            trimmed == "reconocimiento facial" || trimmed == "cara" -> {
+                execute(SystemCommand.DetectFace)
+            }
+
+            // ===== Fase 4: Hardware directo =====
+
+            // 30. Vibración
+            trimmed.startsWith("vibra ") || trimmed.startsWith("vibrar ") ||
+            trimmed == "vibra" || trimmed == "vibrar" -> {
+                val arg = if (trimmed == "vibra" || trimmed == "vibrar") "" else
+                    trimmed.removePrefix("vibra ").removePrefix("vibrar ").trim()
+                parseVibration(arg)
+            }
+
+            // 31. Ubicación GPS
+            trimmed.startsWith("donde estoy") || trimmed.startsWith("dónde estoy") ||
+            trimmed.startsWith("mi ubicacion") || trimmed.startsWith("mi ubicación") ||
+            trimmed.startsWith("que ubicacion tengo") || trimmed.startsWith("que ubicación tengo") ||
+            trimmed == "ubicacion" || trimmed == "ubicación" ||
+            trimmed.startsWith("coordenadas") || trimmed.startsWith("latitud") ||
+            trimmed.startsWith("donde me encuentro") -> {
+                execute(SystemCommand.GetLocation)
+            }
+
+            // 32. WiFi toggle
+            trimmed.startsWith("enciende el wifi") || trimmed.startsWith("encender wifi") ||
+            trimmed.startsWith("activa el wifi") || trimmed.startsWith("activar wifi") ||
+            trimmed.startsWith("prende el wifi") || trimmed == "wifi" -> {
+                execute(SystemCommand.SetWifi(true))
+            }
+            trimmed.startsWith("apaga el wifi") || trimmed.startsWith("apagar wifi") ||
+            trimmed.startsWith("desactiva el wifi") || trimmed.startsWith("desactivar wifi") ||
+            trimmed.startsWith("cierra el wifi") -> {
+                execute(SystemCommand.SetWifi(false))
+            }
+
+            // 33. Captura de cámara
+            trimmed.startsWith("saca una foto") || trimmed.startsWith("tomar foto") ||
+            trimmed.startsWith("toma una foto") || trimmed.startsWith("sacar foto") ||
+            trimmed == "foto" || trimmed == "captura" || trimmed == "selfie" ||
+            trimmed.startsWith("captura foto") || trimmed.startsWith("foto con la camara") -> {
+                val useFront = trimmed.contains("frontal") || trimmed.contains("delantera") ||
+                    trimmed.contains("selfie")
+                execute(SystemCommand.TakePhoto(useFront))
+            }
+
+            // 34. Personalidad J.A.R.V.I.S. (Modos)
+            trimmed.contains("protocolo centinela") || trimmed.contains("mantente alerta") || 
+            trimmed == "modo centinela" -> {
+                execute(SystemCommand.SetAssistantMode(AssistantMode.CENTINELA))
+            }
+            trimmed.contains("modo tactico") || trimmed.contains("solo emergencias") || 
+            trimmed.contains("activa modo tactico") -> {
+                execute(SystemCommand.SetAssistantMode(AssistantMode.TACTICO))
+            }
+            trimmed.contains("silencio de radio") || trimmed.contains("solo responde si te hablo") || 
+            trimmed == "modo silencioso" -> {
+                execute(SystemCommand.SetAssistantMode(AssistantMode.SILENCIOSO))
+            }
+
             // 12. Alarma: con hora hablada → SetAlarm; sin hora → OpenAlarms
             // B1: el anchor (las|la) de TimePhraseParser capturaba el "la" del sustantivo
             // ("pon la alarma a las 7" → hora "alarma" → null → OpenAlarms). Igual que la
@@ -350,13 +660,27 @@ open class SystemCommandParser(
         }
     }
 
+    /**
+     * Parsea y ejecuta un comando simple SIN detección de conectores de secuencia.
+     *
+     * Firma y semántica idéntica a {@link #parse(String)}: devuelve el resultado
+     * de la ejecución ({@code "Éxito: ..."} | {@code "Error: ..."}) o {@code null}
+     * si no es un comando directo (delega a Gemini).
+     *
+     * Expuesto públicamente para que {@link SequenceParserImpl} pueda reutilizar
+     * la lógica de parsing/ejecución de comandos atómicos.
+     *
+     * @see #parse(String)
+     */
+    suspend fun parseSingleCommand(text: String): String? = parse(text)
+
     // M2 (Lote 10): sufijo de cortesía del dictado ("por favor"/"porfavor"/"porfa",
     // case-insensitive, con separadores opcionales) — es un artefacto de la voz, no
     // parte del argumento de la llamada. Sin esto, "llama a 600 123 456 por favor"
     // NO matchea phoneRegex (matches = cadena completa) → Call("600 123 456 por favor").
     private val cortesiaSufijoRegex = Regex("""(?i)\s*(?:por\s+favor|porfavor|porfa)\s*$""")
 
-    private fun callOrNumber(arg: String): String {
+    private suspend fun callOrNumber(arg: String): String {
         val limpio = cortesiaSufijoRegex.replace(arg.trim(), "").trim()
         // M2: "llama a por favor" → sin target tras el strip → error SIN ejecutar
         // (antes emitía Call("por favor"), contacto basura).
@@ -430,11 +754,93 @@ open class SystemCommandParser(
         return numMinutes + spokenMinutes + fraction + fractionUnit + bare + ceilSeconds
     }
 
-    private fun execute(command: SystemCommand): String = runBlocking {
-        when (val result = systemAction.execute(command)) {
+    private suspend fun execute(command: SystemCommand): String {
+        return when (val result = systemAction.execute(command)) {
             is ActionResult.Success -> result.message
             is ActionResult.Error -> "Error: ${result.reason}"
         }
+    }
+
+    /**
+     * Parsea una expresión matemática en lenguaje natural y la ejecuta.
+     * Soporta: "cuanto es 5 por 7", "suma 3 y 4", "resta 5 de 10",
+     * "multiplica 12 por 5", "divide 10 entre 2".
+     *
+     * MATH (ADR-MATH, P4): emisión en dos niveles (compatibilidad):
+     *  1. Si la forma legacy matchea binario simple COMPLETO (`num op num`) →
+     *     `Calculate` legacy (los 12 tests viejos siguen verdes sin tocarse).
+     *  2. Si no, segmento ORIGINAL → `MathExpressionNormalizer` → canónica:
+     *     binaria simple → `Calculate` legacy; compleja válida →
+     *     `CalculateExpression`; inválida/incompleta → null (Nivel 2).
+     */
+    private suspend fun parseCalculator(trimmed: String, original: String): String? {
+        val prefixes = listOf(
+            "cuanto es ", "que es ", "cuanto son ", "cuantos son ", "que son ",
+            "suma ", "sumar ", "resta ", "restar ",
+            "multiplica ", "multiplicar ", "divide ", "dividir ", "calcula ", "calcular "
+        )
+        val prefix = prefixes.firstOrNull { trimmed.startsWith(it) } ?: return null
+        
+        // Extraer segmento post-trigger preservando símbolos decimales y puntuación interna
+        val rawSegment = original.trim().substring(prefix.length)
+            .trim().trim(' ', '?', '!', '¡', '¿', ';', ':').trim()
+        val trimmedSegment = trimmed.substring(prefix.length)
+
+        // J.A.R.V.I.S. v3.8.4: Especial para "resta X de Y" (invertido)
+        var preNormalized = trimmedSegment
+        if (prefix.startsWith("resta")) {
+            val match = Regex("""(\d+(?:\.\d+)?)\s+de\s+(\d+(?:\.\d+)?)""").find(trimmedSegment)
+            if (match != null) {
+                preNormalized = "${match.groupValues[2]} - ${match.groupValues[1]}"
+            }
+        }
+
+        // Intento 1: Binario simple directo (legacy regex) para máxima velocidad
+        val normalizedSimple = preNormalized.replace(Regex("""\s+y\s+"""), " + ")
+            .replace(Regex("""\s*por\s*"""), " * ")
+            .replace(Regex("""\s*entre\s*"""), " / ")
+            .replace(Regex("""\s*mas\s*"""), " + ")
+            .replace(Regex("""\s*menos\s*"""), " - ")
+        
+        val calcSimpleRegex = Regex("""^\s*(\d+(?:\.\d+)?)\s*([+\-*/])\s*(\d+(?:\.\d+)?)\s*$""")
+        val simpleMatch = calcSimpleRegex.matchEntire(normalizedSimple)
+        
+        if (simpleMatch != null) {
+            val op1 = simpleMatch.groupValues[1].toDoubleOrNull() ?: return null
+            val operator = when (simpleMatch.groupValues[2]) {
+                "+" -> CalculatorOperator.ADD
+                "-" -> CalculatorOperator.SUBTRACT
+                "*" -> CalculatorOperator.MULTIPLY
+                "/" -> CalculatorOperator.DIVIDE
+                else -> null
+            }
+            val op2 = simpleMatch.groupValues[3].toDoubleOrNull() ?: return null
+            if (operator != null) return execute(SystemCommand.Calculate(op1, operator, op2))
+        }
+
+        // Intento 2: Normalización compleja (Español natural, raíces, potencias, etc.)
+        val canonical = MathExpressionNormalizer.toCanonical(preNormalized, rawSegment)
+            ?: return null
+
+        // Si la normalización compleja devolvió un binario simple canónico (negativos incluidos)
+        val canonicalSimple = Regex("""^(-?\d+(?:\.\d+)?)\s*([+\-*/])\s*(-?\d+(?:\.\d+)?)$""")
+            .matchEntire(canonical)
+        
+        if (canonicalSimple != null) {
+            val op1 = canonicalSimple.groupValues[1].toDoubleOrNull() ?: return null
+            val operator = when (canonicalSimple.groupValues[2]) {
+                "+" -> CalculatorOperator.ADD
+                "-" -> CalculatorOperator.SUBTRACT
+                "*" -> CalculatorOperator.MULTIPLY
+                "/" -> CalculatorOperator.DIVIDE
+                else -> null
+            }
+            val op2 = canonicalSimple.groupValues[3].toDoubleOrNull() ?: return null
+            if (operator != null) return execute(SystemCommand.Calculate(op1, operator, op2))
+        }
+
+        // Caso General: Expresión matemática compleja
+        return execute(SystemCommand.CalculateExpression(canonical))
     }
 
     // Decide con trimmed (normalizado + trimado — O6) pero extrae sobre el texto original
@@ -454,6 +860,38 @@ open class SystemCommandParser(
             .trim()
             .trimStart(' ', '.', ',', ';', '?', '!', '¿', '¡', ':')
             .trimEnd(' ', '.', ',', ';', '?', '!', '¿', '¡', ':')
+    }
+
+    /**
+     * Parsea el argumento de vibración: "2 segundos", "500", "sos", "llamada", etc.
+     * Si es un número puro se interpreta como milisegundos.
+     * Si es un patrón conocido (sos, llamada, alarma) se usa el patrón.
+     */
+    private suspend fun parseVibration(arg: String): String {
+        val trimmedArg = arg.trim().lowercase()
+        if (trimmedArg.isEmpty()) {
+            return execute(SystemCommand.Vibrate(500)) // Default: 500ms
+        }
+        // Patrones conocidos
+        val patterns = listOf("sos", "llamada", "alarma")
+        if (trimmedArg in patterns) {
+            return execute(com.screenassistant.core.domain.model.SystemCommand.Vibrate(0))
+            // El parser no puede distinguir patrones vs duración —
+            // delegamos al action que maneja ambos casos.
+        }
+        // Extraer número: "2 segundos", "500 ms", "1.5 segundos", "500"
+        val numberRegex = Regex("""(\d+(?:\.\d+)?)\s*(?:segundos?|s|ms|milisegundos?)?""")
+        val match = numberRegex.find(trimmedArg)
+        if (match != null) {
+            val value = match.groupValues[1].toDoubleOrNull() ?: return "Error: Duración no válida."
+            val durationMs = if (trimmedArg.contains("ms") || trimmedArg.contains("milisegundos")) {
+                value.toLong()
+            } else {
+                (value * 1000).toLong() // Convertir segundos a ms
+            }
+            return execute(SystemCommand.Vibrate(durationMs))
+        }
+        return "Error: No entendí la duración. Usa algo como '2 segundos' o '500'."
     }
 
     /**

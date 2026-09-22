@@ -3,6 +3,7 @@ package com.screenassistant.service.system
 import android.accessibilityservice.AccessibilityService
 import android.graphics.Bitmap
 import android.os.Build
+import android.util.Log
 import android.view.Display
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
@@ -195,11 +196,22 @@ class ScreenContextService : AccessibilityService(), ScreenCaptureProvider {
         return Bitmap.createScaledBitmap(source, newWidth, newHeight, true)
     }
 
+    // D3: AccessibilityNodeInfo.recycle() deprecado en API 34+ (ahora
+    // AutoCloseable con close()). Se mantiene recycle() con @Suppress:
+    // close()/use{} NO EXISTEN en API < 34 (minSdk 26) — migrar rompería
+    // en runtime con NoSuchMethodError. recycle() sigue funcionando.
+    @Suppress("DEPRECATION")
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         val currentTime = System.currentTimeMillis()
         if (currentTime - lastEventTime < THROTTLE_MS) return
 
         lastEventTime = currentTime
+
+        // Capturar el paquete de la aplicación actual
+        val packageName = event?.packageName?.toString()
+        if (::screenContextRepository.isInitialized) {
+            screenContextRepository.updateActiveApp(packageName)
+        }
 
         val rootNode = rootInActiveWindow ?: return
         val textBuilder = StringBuilder()
@@ -215,6 +227,9 @@ class ScreenContextService : AccessibilityService(), ScreenCaptureProvider {
 
     // M8: el builder se acota a MAX_TEXT_LENGTH (antes crecía sin límite: un
     // AccessibilityNodeInfo gigante podía generar megabytes de texto).
+    // D3: ver comentario en onAccessibilityEvent — recycle() se conserva con
+    // @Suppress (close() solo existe en API 34+).
+    @Suppress("DEPRECATION")
     private fun extractText(node: AccessibilityNodeInfo, builder: StringBuilder) {
         if (builder.length >= MAX_TEXT_LENGTH) return
         node.text?.let {

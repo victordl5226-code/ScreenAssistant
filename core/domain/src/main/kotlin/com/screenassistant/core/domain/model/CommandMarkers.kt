@@ -8,4 +8,7 @@ package com.screenassistant.core.domain.model
 object CommandMarkers {
     const val HELP = "__SCREEN_ASSISTANT_HELP__"
     const val REPEAT = "__SCREEN_ASSISTANT_REPEAT__"
+    const val START_MONITORING = "__SCREEN_ASSISTANT_START_MONITORING__"
+    const val STOP_MONITORING = "__SCREEN_ASSISTANT_STOP_MONITORING__"
+    const val ANALYZE_SCREEN = "__SCREEN_ASSISTANT_ANALYZE_SCREEN__"
 }

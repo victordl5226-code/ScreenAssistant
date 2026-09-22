@@ -1,26 +1,31 @@
 package com.screenassistant.service.system
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import com.screenassistant.core.domain.action.SystemAction
-import com.screenassistant.core.domain.model.ActionResult
-import com.screenassistant.core.domain.model.SystemCommand
-import com.screenassistant.service.system.action.AlarmAction
-import com.screenassistant.service.system.action.AppLauncherAction
-import com.screenassistant.service.system.action.CallAction
-import com.screenassistant.service.system.action.LanguageAction
-import com.screenassistant.service.system.action.MapsAction
-import com.screenassistant.service.system.action.MediaAction
-import com.screenassistant.service.system.action.MemoryAction
-import com.screenassistant.service.system.action.MessagingAction
-import com.screenassistant.service.system.action.NoteAction
-import com.screenassistant.service.system.action.SearchAction
-import com.screenassistant.service.system.action.SettingsAction
-import com.screenassistant.service.system.action.SystemVolumeAction
-import com.screenassistant.service.system.action.TimerAction
+import com.screenassistant.core.domain.model.*
+import com.screenassistant.core.domain.model.actionId
+import com.screenassistant.core.domain.repository.ScreenContextRepository
+import com.screenassistant.core.domain.util.JarvisResponseFormatter
+import com.screenassistant.core.domain.repository.MemoryRepository
+import com.screenassistant.core.domain.repository.UserPatternRepository
+import com.screenassistant.service.system.action.*
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/**
+ * Orquestador central de acciones del sistema.
+ * 
+ * Implementa [SystemAction] delegando en clases especializadas para cada tipo de comando.
+ * Optimizado para J.A.R.V.I.S. con integración de contexto visual real.
+ */
 @Singleton
 class SystemActionHandler @Inject constructor(
     private val callAction: CallAction,
@@ -36,12 +41,62 @@ class SystemActionHandler @Inject constructor(
     private val languageAction: LanguageAction,
     private val memoryAction: MemoryAction,
     private val noteAction: NoteAction,
+    private val calculatorAction: CalculatorAction,
+    private val stopwatchActionProvider: StopwatchActionProvider,
+    private val deviceInfoAction: DeviceInfoAction,
+    private val clipboardAction: ClipboardAction,
+    private val contactsAction: ContactsAction,
+    private val wifiInfoAction: WifiInfoAction,
+    private val bluetoothAction: BluetoothAction,
+    private val brightnessAction: BrightnessAction,
+    private val flashlightAction: FlashlightAction,
+    private val airplaneModeAction: AirplaneModeAction,
+    private val mobileDataAction: MobileDataAction,
+    private val openFileAction: OpenFileAction,
+    private val callHistoryAction: CallHistoryAction,
+    private val qrScanAction: QrScanAction,
+    private val ocrAction: OcrAction,
+    private val translateAction: TranslateAction,
+    private val faceDetectionAction: FaceDetectionAction,
+    private val vibrationAction: VibrationAction,
+    private val locationAction: LocationAction,
+    private val wifiToggleAction: WifiToggleAction,
+    private val cameraAction: CameraAction,
+    private val screenContextRepository: ScreenContextRepository,
+    private val memoryRepository: MemoryRepository,
+    private val userPatternRepository: UserPatternRepository,
     @ApplicationContext private val context: Context
 ) : SystemAction {
 
+    private val _assistantMode = MutableStateFlow(AssistantMode.CENTINELA)
+    override val assistantMode: StateFlow<AssistantMode> = _assistantMode.asStateFlow()
+
     override suspend fun execute(command: SystemCommand): ActionResult {
-        return try {
-            val message = when (command) {
+        val result = try {
+            val memories = memoryRepository.getAllMemories().first()
+            val userName = memoryRepository.getUserName(memories) ?: "Señor"
+            val mode = _assistantMode.value
+
+            // Confirmación háptica J.A.R.V.I.S. para acciones críticas
+            when (command) {
+                is SystemCommand.Call, is SystemCommand.SendSms, is SystemCommand.CallNumber -> {
+                    vibrationAction.vibrate(150) 
+                }
+                else -> {}
+            }
+
+            // Captura de contexto visual ANTES del when (sin lazy, sin runBlocking)
+            val visualBitmap: Bitmap? = when (command) {
+                is SystemCommand.ScanQr,
+                is SystemCommand.OcrScan,
+                is SystemCommand.DetectFace -> {
+                    val imageData = screenContextRepository.captureScreenshot()
+                    imageData?.let { BitmapFactory.decodeByteArray(it.data, 0, it.data.size) }
+                }
+                else -> null
+            }
+
+            val rawMessage = when (command) {
                 is SystemCommand.Call -> callAction.makeCall(command.contactName)
                 is SystemCommand.SendSms -> callAction.sendSms(command.contact, command.message)
                 is SystemCommand.SetAlarm -> alarmAction.setAlarm(command.hour, command.minute, command.label)
@@ -64,30 +119,73 @@ class SystemActionHandler @Inject constructor(
                 is SystemCommand.CallNumber -> callAction.makeCallToNumber(command.phoneNumber)
                 is SystemCommand.SaveMemory -> memoryAction.saveMemory(command.fact)
                 is SystemCommand.CreateNote -> noteAction.saveNote(command.text)
-                // N1: "lee mis notas" → resumen; "lee la nota de X" → búsqueda por contenido.
                 is SystemCommand.ReadNotes -> noteAction.readNotesSummary()
                 is SystemCommand.ReadNote -> noteAction.readNote(command.query)
+                
+                // Capacidades Offline
+                is SystemCommand.Calculate -> calculatorAction.calculate(command)
+                // MATH (ADR-MATH, P3): expresión libre — Calculate binario intacto.
+                is SystemCommand.CalculateExpression -> calculatorAction.calculateExpression(command)
+                is SystemCommand.Stopwatch -> stopwatchActionProvider.execute(command.action)
+                is SystemCommand.DeviceInfo -> deviceInfoAction.getInfo(command.type)
+                is SystemCommand.Clipboard -> clipboardAction.execute(command)
+                is SystemCommand.ListContacts -> contactsAction.listContacts()
+                is SystemCommand.GetWifiInfo -> wifiInfoAction.getWifiInfo()
+                
+                // Hardware y Ajustes
+                is SystemCommand.SetBluetooth -> bluetoothAction.setBluetooth(command.enabled)
+                is SystemCommand.SetBrightness -> brightnessAction.setBrightness(command.level)
+                is SystemCommand.SetFlashlight -> flashlightAction.setFlashlight(command.enabled)
+                is SystemCommand.SetAirplaneMode -> airplaneModeAction.setAirplaneMode(command.enabled)
+                is SystemCommand.SetMobileData -> mobileDataAction.setMobileData(command.enabled)
+                is SystemCommand.OpenFile -> openFileAction.openFile(command.query)
+                is SystemCommand.CallHistory -> callHistoryAction.getCallHistory()
+                
+                // Inteligencia Visual (Optimizado con contexto de pantalla real)
+                is SystemCommand.ScanQr -> qrScanAction.scanQr(visualBitmap)
+                is SystemCommand.OcrScan -> ocrAction.scanText(visualBitmap)
+                is SystemCommand.TranslateText -> translateAction.translate(command.text, command.targetLanguage)
+                is SystemCommand.DetectFace -> faceDetectionAction.detectFace(visualBitmap)
+                
+                // Hardware Directo
+                is SystemCommand.Vibrate -> vibrationAction.vibrate(command.durationMs)
+                is SystemCommand.GetLocation -> locationAction.getCurrentLocation()
+                is SystemCommand.SetWifi -> wifiToggleAction.setWifi(command.enabled)
+                is SystemCommand.TakePhoto -> cameraAction.takePhoto(command.useFrontCamera)
+
+                // Personalidad J.A.R.V.I.S.
+                is SystemCommand.SetAssistantMode -> {
+                    _assistantMode.value = command.mode
+                    "Protocolo ${command.mode.name} activado."
+                }
             }
-            ActionResult.Success(message)
+
+            val formatted = if (rawMessage.startsWith("Error:")) {
+                JarvisResponseFormatter.formatError(rawMessage.removePrefix("Error:").trim(), userName, mode)
+            } else {
+                JarvisResponseFormatter.formatSuccess(rawMessage.removePrefix("Éxito:").trim(), userName, mode)
+            }
+
+            ActionResult.Success(formatted)
         } catch (e: kotlin.coroutines.cancellation.CancellationException) {
-            // B5: la cancelación de la corrutina (p.ej. al cerrar el overlay mientras
-            // se ejecuta una acción) se RE-LANZA siempre — tragar la cancelación
-            // dejaría la corrutina viva. Contrato del repo.
             throw e
         } catch (e: Exception) {
-            // M10 (Lote 10): NUNCA se filtra e.message al usuario (puede contener
-            // clases internas, rutas o SQL — espíritu ADR-009/O7). El detalle va a
-            // logcat; el usuario recibe el mismo mensaje limpio que el resto de acciones.
-            // B5 sigue intacto: la CancellationException se re-lanza en el catch ANTERIOR.
-            android.util.Log.w("SystemActionHandler", "Acción fallida: ${command.javaClass.simpleName}", e)
-            ActionResult.Error("No pudo completarse la acción.")
+            android.util.Log.w("SystemActionHandler", "Protocolo fallido: ${command.actionId}", e)
+            ActionResult.Error("No pude procesar la solicitud de sistema, Señor.")
         }
+
+        // Fire-and-forget: tracking de patrones no bloquea ni contamina el resultado
+        try {
+            userPatternRepository.trackAction(command.actionId)
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            throw e  // Respetar structured concurrency
+        } catch (e: Exception) {
+            android.util.Log.w("SystemActionHandler", "Tracking fallido para ${command.actionId}")
+        }
+
+        return result
     }
 
-    // M22 (Lote 10): NetworkUtils (core:data) se ELIMINÓ — cero call sites. Esta
-    // implementación inline es la VIVA, con la diferencia deliberada de NO incluir
-    // TRANSPORT_ETHERNET: el overlay nunca debe encolar mensajes sobre una red
-    // Ethernet (cable) sin confirmación de conectividad móvil/WiFi (contexto de uso).
     private fun hasNetwork(): Boolean {
         val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
         val network = connectivityManager.activeNetwork

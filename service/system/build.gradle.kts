@@ -15,18 +15,17 @@ android {
     }
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
-    }
-
-    kotlinOptions {
-        jvmTarget = "11"
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
 
     // android.util.Log en AppLauncherAction: devuelve defaults en JVM en vez de
     // lanzar "not mocked" (los tests mockean todo lo demás con MockK).
     testOptions {
-        unitTests.isReturnDefaultValues = true
+        unitTests {
+            isReturnDefaultValues = true
+            isIncludeAndroidResources = true
+        }
     }
 
     // Lote 12 (M13): cobertura JaCoCo del módulo.
@@ -34,6 +33,13 @@ android {
         debug {
             enableUnitTestCoverage = true
         }
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+        freeCompilerArgs.add("-opt-in=kotlin.RequiresOptIn")
     }
 }
 
@@ -58,13 +64,13 @@ private val jacocoClassFilter = listOf(
     "**/*_GeneratedInjector.class"
 )
 
-private fun jacocoClassTree(): FileTree = fileTree("$buildDir/tmp/kotlin-classes/debug") {
+private fun jacocoClassTree(): FileTree = fileTree(project.layout.buildDirectory.dir("tmp/kotlin-classes/debug").get().asFile) {
     exclude(jacocoClassFilter)
 }
 
 private fun jacocoSources(): FileCollection = files("src/main/java", "src/main/kotlin")
 
-private fun jacocoExec(): FileTree = fileTree("$buildDir/outputs/unit_test_code_coverage/debugUnitTest") {
+private fun jacocoExec(): FileTree = fileTree(project.layout.buildDirectory.dir("outputs/unit_test_code_coverage/debugUnitTest").get().asFile) {
     include("*.exec")
 }
 
@@ -117,8 +123,20 @@ dependencies {
     implementation("com.google.dagger:hilt-android:2.53.1")
     ksp("com.google.dagger:hilt-android-compiler:2.53.1")
 
+    // ML Kit & Location
+    implementation("com.google.android.gms:play-services-location:21.3.0")
+    implementation("com.google.mlkit:barcode-scanning:17.3.0")
+    implementation("com.google.mlkit:face-detection:16.1.7")
+    implementation("com.google.mlkit:text-recognition:16.0.1")
+    implementation("com.google.mlkit:language-id:17.0.6")
+    implementation("com.google.mlkit:translate:17.0.3")
+
     // Testing — M24: version catalog
     testImplementation(libs.junit)
     testImplementation(libs.mockk)
     testImplementation(libs.coroutines.test)
+
+    // Robolectric — para tests de Camera, Location, Vibration, WifiToggle
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core)
 }

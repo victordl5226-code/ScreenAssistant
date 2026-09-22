@@ -4,6 +4,7 @@ plugins {
     id("com.google.devtools.ksp")
     id("com.google.dagger.hilt.android")
     id("jacoco")
+    id("org.jetbrains.kotlin.plugin.serialization")
 }
 
 android {
@@ -15,18 +16,18 @@ android {
     }
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
-    }
-
-    kotlinOptions {
-        jvmTarget = "11"
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
 
     // Lote 12 (M6): Robolectric necesita resources/assets reales (ApplicationProvider).
+    // P4-fix (Grupo A): isReturnDefaultValues = true — android.util.Log en
+    // ProactiveSuggestionManager/GeminiRepositoryImpl devuelve defaults en JVM
+    // en vez de lanzar "not mocked" (espejo de service:system).
     testOptions {
         unitTests {
             isIncludeAndroidResources = true
+            isReturnDefaultValues = true
         }
     }
 
@@ -42,6 +43,13 @@ android {
     // source set) → sin este srcDir, MigrationTestHelper lanza FileNotFoundException.
     sourceSets {
         getByName("test").assets.srcDir("$projectDir/schemas")
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+        freeCompilerArgs.add("-opt-in=kotlin.RequiresOptIn")
     }
 }
 
@@ -71,13 +79,13 @@ private val jacocoClassFilter = listOf(
     "**/*_GeneratedInjector.class"
 )
 
-private fun jacocoClassTree(): FileTree = fileTree("$buildDir/tmp/kotlin-classes/debug") {
+private fun jacocoClassTree(): FileTree = fileTree(project.layout.buildDirectory.dir("tmp/kotlin-classes/debug").get().asFile) {
     exclude(jacocoClassFilter)
 }
 
 private fun jacocoSources(): FileCollection = files("src/main/java", "src/main/kotlin")
 
-private fun jacocoExec(): FileTree = fileTree("$buildDir/outputs/unit_test_code_coverage/debugUnitTest") {
+private fun jacocoExec(): FileTree = fileTree(project.layout.buildDirectory.dir("outputs/unit_test_code_coverage/debugUnitTest").get().asFile) {
     include("*.exec")
 }
 
@@ -136,8 +144,17 @@ dependencies {
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
 
+    // DataStore
+    implementation("androidx.datastore:datastore-preferences:1.1.1")
+    implementation("androidx.datastore:datastore-core:1.1.1")
+
+    // Network
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
     // WorkManager
     implementation("androidx.work:work-runtime-ktx:2.10.0")
+    implementation("androidx.hilt:hilt-work:1.2.0")
+    ksp("androidx.hilt:hilt-compiler:1.2.0")
 
     // Testing — M24: version catalog
     testImplementation(libs.junit)
@@ -151,4 +168,7 @@ dependencies {
     testImplementation(libs.room.testing)
     testImplementation(libs.robolectric)
     testImplementation(libs.androidx.test.core)
+
+    // AiOrchestratorIntegrationTest necesita StubLocalInferenceEngine de core:ai:local
+    testImplementation(project(":core:ai:local"))
 }

@@ -16,14 +16,8 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Lote 12 (M13): UI tests de MainScreen — composable PURO (sin Hilt; los VMs
- * viven en MainActivity, fuera de alcance). createAndroidComposeRule<ComponentActivity>
- * (QA-5: usa LocalContext/LifecycleResumeEffect → necesita actividad real) y
- * SIEMPRE envuelto en ScreenAssistantTheme (QA-4).
- *
- * RESTRICCIÓN del diseño (R9): NO se asserta el badge de accesibilidad (lee
- * Settings.Secure del dispositivo real, estado no determinista) — solo elementos
- * estables de la pantalla.
+ * UI tests de MainScreen — composable PURO (sin Hilt).
+ * createAndroidComposeRule<ComponentActivity> y SIEMPRE envuelto en ScreenAssistantTheme.
  */
 @RunWith(AndroidJUnit4::class)
 class MainScreenTest {
@@ -41,6 +35,8 @@ class MainScreenTest {
                     onStartService = onStartService,
                     onStopService = onStopService,
                     onRequestExtraPermissions = {},
+                    onNavigateToLocalLlmSettings = {},
+                    onNavigateToIotSettings = {},
                     apiKeyUiState = UiState(),
                     onApiKeyInputChange = {},
                     onApiKeySave = {},
@@ -58,19 +54,16 @@ class MainScreenTest {
     }
 
     @Test
-    fun `render muestra titulo secciones y botones de servicio`() {
+    fun renderMuestraTituloYBotones() {
         setContent()
 
-        compose.onNodeWithText("Configuración de Screen Assistant").assertIsDisplayed()
-        compose.onNodeWithText("API Key (Gemini)").assertIsDisplayed()
-        compose.onNodeWithText("Puente Tasker (configuración)").assertIsDisplayed()
-        // Botones bajo el scroll vertical: se scrollean al viewport y se verifican visibles.
+        compose.onNodeWithText("J.A.R.V.I.S.").assertIsDisplayed()
         compose.onNodeWithText("Iniciar Asistente Flotante").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Detener Asistente Flotante").performScrollTo().assertIsDisplayed()
     }
 
     @Test
-    fun `click en iniciar asistente invoca onStartService`() {
+    fun clickIniciarAsistenteInvocaOnStartService() {
         var started = false
         setContent(onStartService = { started = true })
 
@@ -80,7 +73,7 @@ class MainScreenTest {
     }
 
     @Test
-    fun `click en detener asistente invoca onStopService`() {
+    fun clickDetenerAsistenteInvocaOnStopService() {
         var stopped = false
         setContent(onStopService = { stopped = true })
 

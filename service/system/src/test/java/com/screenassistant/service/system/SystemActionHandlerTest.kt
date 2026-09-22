@@ -14,15 +14,36 @@ import com.screenassistant.service.system.action.MediaAction
 import com.screenassistant.service.system.action.MemoryAction
 import com.screenassistant.service.system.action.MessagingAction
 import com.screenassistant.service.system.action.NoteAction
+import com.screenassistant.service.system.action.CalculatorAction
+import com.screenassistant.service.system.action.StopwatchActionProvider
+import com.screenassistant.service.system.action.DeviceInfoAction
+import com.screenassistant.service.system.action.ClipboardAction
+import com.screenassistant.service.system.action.ContactsAction
+import com.screenassistant.service.system.action.WifiInfoAction
+import com.screenassistant.service.system.action.BluetoothAction
+import com.screenassistant.service.system.action.BrightnessAction
+import com.screenassistant.service.system.action.FlashlightAction
+import com.screenassistant.service.system.action.AirplaneModeAction
+import com.screenassistant.service.system.action.MobileDataAction
+import com.screenassistant.service.system.action.OpenFileAction
+import com.screenassistant.service.system.action.CallHistoryAction
+import com.screenassistant.service.system.action.QrScanAction
+import com.screenassistant.service.system.action.OcrAction
+import com.screenassistant.service.system.action.TranslateAction
+import com.screenassistant.service.system.action.FaceDetectionAction
 import com.screenassistant.service.system.action.SearchAction
 import com.screenassistant.service.system.action.SettingsAction
 import com.screenassistant.service.system.action.SystemVolumeAction
 import com.screenassistant.service.system.action.TimerAction
+import com.screenassistant.core.domain.repository.MemoryRepository
+import com.screenassistant.core.domain.repository.ScreenContextRepository
+import com.screenassistant.core.domain.repository.UserPatternRepository
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Before
@@ -44,6 +65,30 @@ class SystemActionHandlerTest {
     private lateinit var languageAction: LanguageAction
     private lateinit var memoryAction: MemoryAction
     private lateinit var noteAction: NoteAction
+    private lateinit var calculatorAction: CalculatorAction
+    private lateinit var stopwatchActionProvider: StopwatchActionProvider
+    private lateinit var deviceInfoAction: DeviceInfoAction
+    private lateinit var clipboardAction: ClipboardAction
+    private lateinit var contactsAction: ContactsAction
+    private lateinit var wifiInfoAction: WifiInfoAction
+    private lateinit var bluetoothAction: BluetoothAction
+    private lateinit var brightnessAction: BrightnessAction
+    private lateinit var flashlightAction: FlashlightAction
+    private lateinit var airplaneModeAction: AirplaneModeAction
+    private lateinit var mobileDataAction: MobileDataAction
+    private lateinit var openFileAction: OpenFileAction
+    private lateinit var callHistoryAction: CallHistoryAction
+    private lateinit var qrScanAction: QrScanAction
+    private lateinit var ocrAction: OcrAction
+    private lateinit var translateAction: TranslateAction
+    private lateinit var faceDetectionAction: FaceDetectionAction
+    private lateinit var vibrationAction: com.screenassistant.service.system.action.VibrationAction
+    private lateinit var locationAction: com.screenassistant.service.system.action.LocationAction
+    private lateinit var wifiToggleAction: com.screenassistant.service.system.action.WifiToggleAction
+    private lateinit var cameraAction: com.screenassistant.service.system.action.CameraAction
+    private lateinit var screenContextRepository: ScreenContextRepository
+    private lateinit var memoryRepository: MemoryRepository
+    private lateinit var userPatternRepository: UserPatternRepository
     private lateinit var context: Context
     private lateinit var handler: SystemActionHandler
 
@@ -62,13 +107,46 @@ class SystemActionHandlerTest {
         languageAction = mockk()
         memoryAction = mockk()
         noteAction = mockk()
+        calculatorAction = mockk()
+        stopwatchActionProvider = mockk()
+        deviceInfoAction = mockk()
+        clipboardAction = mockk()
+        contactsAction = mockk()
+        wifiInfoAction = mockk()
+        bluetoothAction = mockk()
+        brightnessAction = mockk()
+        flashlightAction = mockk()
+        airplaneModeAction = mockk()
+        mobileDataAction = mockk()
+        openFileAction = mockk()
+        callHistoryAction = mockk()
+        qrScanAction = mockk()
+        ocrAction = mockk()
+        translateAction = mockk()
+        faceDetectionAction = mockk()
+        vibrationAction = mockk(relaxed = true)
+        locationAction = mockk()
+        wifiToggleAction = mockk()
+        cameraAction = mockk()
+        screenContextRepository = mockk()
+        memoryRepository = mockk(relaxed = true)
+        coEvery { memoryRepository.getAllMemories() } returns flowOf(emptyList())
+        coEvery { memoryRepository.getUserName(any()) } returns "Señor"
+        userPatternRepository = mockk(relaxed = true)
         context = mockk(relaxed = true)
         handler = SystemActionHandler(
             callAction, messagingAction, mediaAction,
             alarmAction, searchAction, appLauncherAction,
             systemVolumeAction, timerAction, mapsAction,
             settingsAction, languageAction, memoryAction,
-            noteAction, context
+            noteAction, calculatorAction, stopwatchActionProvider,
+            deviceInfoAction, clipboardAction, contactsAction,
+            wifiInfoAction, bluetoothAction, brightnessAction,
+            flashlightAction, airplaneModeAction, mobileDataAction,
+            openFileAction, callHistoryAction, qrScanAction,
+            ocrAction, translateAction, faceDetectionAction,
+            vibrationAction, locationAction, wifiToggleAction, cameraAction,
+            screenContextRepository, memoryRepository, userPatternRepository, context
         )
     }
 
@@ -79,7 +157,7 @@ class SystemActionHandlerTest {
 
         val result = handler.execute(SystemCommand.OpenApp("whatsapp"))
 
-        assertEquals(ActionResult.Success("Éxito: Abriendo WhatsApp."), result)
+        assertEquals(ActionResult.Success("De inmediato, Señor. Abriendo WhatsApp."), result)
         coVerify(exactly = 1) { appLauncherAction.launchApp("whatsapp") }
         // Las demás acciones no deben tocarse
         coVerify(exactly = 0) { callAction.makeCall(any()) }
@@ -96,7 +174,7 @@ class SystemActionHandlerTest {
 
         val result = handler.execute(SystemCommand.OpenApp("whatsapp"))
 
-        assertEquals(ActionResult.Error("No pudo completarse la acción."), result)
+        assertEquals(ActionResult.Error("No pude procesar la solicitud de sistema, Señor."), result)
     }
 
     // 3. launchApp devuelve "Error: ..." sin lanzar -> Success (el catch solo captura excepciones)
@@ -106,7 +184,7 @@ class SystemActionHandlerTest {
 
         val result = handler.execute(SystemCommand.OpenApp("whatsapp"))
 
-        assertEquals(ActionResult.Success("Error: No se pudo abrir la aplicación."), result)
+        assertEquals(ActionResult.Success("Atención Señor, he detectado un inconveniente: No se pudo abrir la aplicación."), result)
     }
 
     // 4. SetVolume delega en SystemVolumeAction
@@ -116,7 +194,7 @@ class SystemActionHandlerTest {
 
         val result = handler.execute(SystemCommand.SetVolume(VolumeAction.UP))
 
-        assertEquals(ActionResult.Success("Éxito: Volumen subido a 10."), result)
+        assertEquals(ActionResult.Success("De inmediato, Señor. Volumen subido a 10."), result)
         coVerify(exactly = 1) { systemVolumeAction.setVolume(VolumeAction.UP) }
         coVerify(exactly = 0) { timerAction.setTimer(any()) }
         coVerify(exactly = 0) { callAction.makeCall(any()) }
@@ -130,7 +208,7 @@ class SystemActionHandlerTest {
 
         val result = handler.execute(SystemCommand.SetLanguage(AssistantLanguage.ENGLISH))
 
-        assertEquals(ActionResult.Success("Éxito: Entendido. A partir de ahora hablaré en inglés."), result)
+        assertEquals(ActionResult.Success("De inmediato, Señor. Entendido. A partir de ahora hablaré en inglés."), result)
         coVerify(exactly = 1) { languageAction.setLanguage(AssistantLanguage.ENGLISH) }
         coVerify(exactly = 0) { memoryAction.saveMemory(any()) }
     }
@@ -142,7 +220,7 @@ class SystemActionHandlerTest {
 
         val result = handler.execute(SystemCommand.SetTimer(5))
 
-        assertEquals(ActionResult.Success("Éxito: Temporizador configurado para 5 minutos."), result)
+        assertEquals(ActionResult.Success("De inmediato, Señor. Temporizador configurado para 5 minutos."), result)
         coVerify(exactly = 1) { timerAction.setTimer(5) }
         coVerify(exactly = 0) { mapsAction.navigateTo(any()) }
     }
@@ -154,7 +232,7 @@ class SystemActionHandlerTest {
 
         val result = handler.execute(SystemCommand.Navigate("la oficina"))
 
-        assertEquals(ActionResult.Success("Éxito: Abriendo Maps hacia la oficina."), result)
+        assertEquals(ActionResult.Success("De inmediato, Señor. Abriendo Maps hacia la oficina."), result)
         coVerify(exactly = 1) { mapsAction.navigateTo("la oficina") }
         coVerify(exactly = 0) { settingsAction.openSettings() }
     }
@@ -166,7 +244,7 @@ class SystemActionHandlerTest {
 
         val result = handler.execute(SystemCommand.OpenSettings)
 
-        assertEquals(ActionResult.Success("Éxito: Abriendo ajustes del sistema."), result)
+        assertEquals(ActionResult.Success("De inmediato, Señor. Abriendo ajustes del sistema."), result)
         coVerify(exactly = 1) { settingsAction.openSettings() }
         coVerify(exactly = 0) { appLauncherAction.launchApp(any()) }
     }
@@ -178,7 +256,7 @@ class SystemActionHandlerTest {
 
         val result = handler.execute(SystemCommand.CallNumber("600123456"))
 
-        assertEquals(ActionResult.Success("Éxito: Llamando al 600123456..."), result)
+        assertEquals(ActionResult.Success("De inmediato, Señor. Llamando al 600123456..."), result)
         coVerify(exactly = 1) { callAction.makeCallToNumber("600123456") }
         coVerify(exactly = 0) { callAction.makeCall(any()) }
     }
@@ -190,7 +268,7 @@ class SystemActionHandlerTest {
 
         val result = handler.execute(SystemCommand.SaveMemory("me gusta el cafe"))
 
-        assertEquals(ActionResult.Success("Éxito: Entendido, lo recordaré."), result)
+        assertEquals(ActionResult.Success("De inmediato, Señor. Entendido, lo recordaré."), result)
         coVerify(exactly = 1) { memoryAction.saveMemory("me gusta el cafe") }
         coVerify(exactly = 0) { languageAction.setLanguage(any()) }
     }
@@ -202,7 +280,7 @@ class SystemActionHandlerTest {
 
         val result = handler.execute(SystemCommand.SetVolume(VolumeAction.DOWN))
 
-        assertEquals(ActionResult.Error("No pudo completarse la acción."), result)
+        assertEquals(ActionResult.Error("No pude procesar la solicitud de sistema, Señor."), result)
     }
 
     // 12. CreateNote delega en NoteAction (suspend) y envuelve el resultado en Success
@@ -213,7 +291,7 @@ class SystemActionHandlerTest {
 
         val result = handler.execute(SystemCommand.CreateNote("comprar leche"))
 
-        assertEquals(ActionResult.Success("Éxito: Nota guardada. Empieza así: «comprar leche»"), result)
+        assertEquals(ActionResult.Success("De inmediato, Señor. Nota guardada. Empieza así: «comprar leche»"), result)
         coVerify(exactly = 1) { noteAction.saveNote("comprar leche") }
     }
 
@@ -224,7 +302,7 @@ class SystemActionHandlerTest {
 
         val result = handler.execute(SystemCommand.CreateNote("texto de prueba"))
 
-        assertEquals(ActionResult.Error("No pudo completarse la acción."), result)
+        assertEquals(ActionResult.Error("No pude procesar la solicitud de sistema, Señor."), result)
     }
 
     // 13b. P2-3 (Lote 10): un mensaje SQL interno (rutas/clases) NO se filtra crudo
@@ -234,7 +312,7 @@ class SystemActionHandlerTest {
 
         val result = handler.execute(SystemCommand.CreateNote("texto de prueba"))
 
-        assertEquals(ActionResult.Error("No pudo completarse la acción."), result)
+        assertEquals(ActionResult.Error("No pude procesar la solicitud de sistema, Señor."), result)
     }
 
     // 14. CreateNote no toca las demás acciones
@@ -258,7 +336,7 @@ class SystemActionHandlerTest {
         val result = handler.execute(SystemCommand.CancelAlarm(7, 30))
 
         assertEquals(
-            ActionResult.Success("Éxito: Alarma de las 7:30 cancelada."),
+            ActionResult.Success("De inmediato, Señor. Alarma de las 7:30 cancelada."),
             result
         )
         coVerify(exactly = 1) { alarmAction.cancelAlarm(7, 30) }
@@ -274,7 +352,7 @@ class SystemActionHandlerTest {
         val result = handler.execute(SystemCommand.CancelAlarm(null, null))
 
         assertEquals(
-            ActionResult.Success("Éxito: He cancelado todas las alarmas."),
+            ActionResult.Success("De inmediato, Señor. He cancelado todas las alarmas."),
             result
         )
         coVerify(exactly = 1) { alarmAction.cancelAlarm(null, null) }
@@ -289,7 +367,7 @@ class SystemActionHandlerTest {
         val result = handler.execute(SystemCommand.OpenAlarms)
 
         assertEquals(
-            ActionResult.Success("Error: Dime a qué hora quieres la alarma, por ejemplo: 'pon una alarma a las 7:30'."),
+            ActionResult.Success("Atención Señor, he detectado un inconveniente: Dime a qué hora quieres la alarma, por ejemplo: 'pon una alarma a las 7:30'."),
             result
         )
         coVerify(exactly = 1) { alarmAction.openAlarms() }
@@ -303,7 +381,7 @@ class SystemActionHandlerTest {
 
         val result = handler.execute(SystemCommand.SetAlarm(8, 0, null))
 
-        assertEquals(ActionResult.Success("Éxito: Alarma configurada para las 8:00."), result)
+        assertEquals(ActionResult.Success("De inmediato, Señor. Alarma configurada para las 8:00."), result)
         coVerify(exactly = 1) { alarmAction.setAlarm(8, 0, null) }
         coVerify(exactly = 0) { alarmAction.cancelAlarm(any(), any()) }
     }
@@ -316,7 +394,7 @@ class SystemActionHandlerTest {
 
         val result = handler.execute(SystemCommand.SetAlarm(7, 30, "despertarme"))
 
-        assertEquals(ActionResult.Success("Éxito: Alarma configurada para las 7:30."), result)
+        assertEquals(ActionResult.Success("De inmediato, Señor. Alarma configurada para las 7:30."), result)
         coVerify(exactly = 1) { alarmAction.setAlarm(7, 30, "despertarme") }
     }
 
@@ -329,7 +407,7 @@ class SystemActionHandlerTest {
         val result = handler.execute(SystemCommand.ReadNotes)
 
         assertEquals(
-            ActionResult.Success("Éxito: Tienes 2 notas. La más reciente empieza así: «comprar leche»"),
+            ActionResult.Success("De inmediato, Señor. Tienes 2 notas. La más reciente empieza así: «comprar leche»"),
             result
         )
         coVerify(exactly = 1) { noteAction.readNotesSummary() }
@@ -343,7 +421,7 @@ class SystemActionHandlerTest {
 
         val result = handler.execute(SystemCommand.ReadNote("x"))
 
-        assertEquals(ActionResult.Success("Éxito: La nota dice: «pan»"), result)
+        assertEquals(ActionResult.Success("De inmediato, Señor. La nota dice: «pan»"), result)
         coVerify(exactly = 1) { noteAction.readNote("x") }
     }
 

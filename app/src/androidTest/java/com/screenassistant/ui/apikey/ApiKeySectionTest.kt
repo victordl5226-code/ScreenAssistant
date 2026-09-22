@@ -21,10 +21,9 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Lote 12 (M13): UI tests de ApiKeySection — composable PURO (estado+callbacks
- * por parámetro, sin Hilt). createComposeRule sin activity propia (QA-5:
- * ui-test-manifest registra ComponentActivity en debug) y SIEMPRE envuelto en
- * ScreenAssistantTheme (QA-4: stringResource + MaterialTheme lo requieren).
+ * UI tests de ApiKeySection — composable PURO (estado+callbacks
+ * por parametro, sin Hilt). createComposeRule sin activity propia y
+ * SIEMPRE envuelto en ScreenAssistantTheme.
  */
 @RunWith(AndroidJUnit4::class)
 class ApiKeySectionTest {
@@ -33,7 +32,7 @@ class ApiKeySectionTest {
     val compose = createComposeRule()
 
     @Test
-    fun `estado no configurado muestra badge y boton guardar deshabilitado`() {
+    fun estadoNoConfiguradoMuestraBadgeYBotonDeshabilitado() {
         compose.setContent {
             ScreenAssistantTheme {
                 ApiKeySection(uiState = UiState(), onInputChange = {}, onSaveKey = {}, onClearKey = {})
@@ -45,7 +44,7 @@ class ApiKeySectionTest {
     }
 
     @Test
-    fun `escribir en el campo notifica onInputChange`() {
+    fun escribirEnCampoNotificaOnInputChange() {
         var input: String? = null
         compose.setContent {
             ScreenAssistantTheme {
@@ -59,7 +58,7 @@ class ApiKeySectionTest {
     }
 
     @Test
-    fun `input no vacio habilita guardar y el click envia onSaveKey con el texto`() {
+    fun inputNoVacioHabilitaGuardarYClickEnviaSaveKey() {
         var uiState by mutableStateOf(UiState())
         var saved: String? = null
         compose.setContent {
@@ -81,11 +80,11 @@ class ApiKeySectionTest {
     }
 
     @Test
-    fun `estado configurado muestra key enmascarada y boton quitar`() {
+    fun estadoConfiguradoMuestraKeyEnmascaradaYBotonQuitar() {
         compose.setContent {
             ScreenAssistantTheme {
                 ApiKeySection(
-                    uiState = UiState(isConfigured = true, maskedKey = "•••• 1234"),
+                    uiState = UiState(isConfigured = true, maskedKey = "\u2022\u2022\u2022\u2022 1234"),
                     onInputChange = {},
                     onSaveKey = {},
                     onClearKey = {}
@@ -93,17 +92,17 @@ class ApiKeySectionTest {
             }
         }
 
-        compose.onNodeWithText("Configurada: •••• 1234").assertIsDisplayed()
+        compose.onNodeWithText("Configurada: \u2022\u2022\u2022\u2022 1234").assertIsDisplayed()
         compose.onNodeWithText("Quitar").assertIsDisplayed()
     }
 
     @Test
-    fun `el dialogo de quitar confirma con onClearKey y cancelar no notifica`() {
+    fun dialogoQuitarConfirmaConOnClearKeyYCancelarNoNotifica() {
         var cleared = false
         compose.setContent {
             ScreenAssistantTheme {
                 ApiKeySection(
-                    uiState = UiState(isConfigured = true, maskedKey = "•••• 1234"),
+                    uiState = UiState(isConfigured = true, maskedKey = "\u2022\u2022\u2022\u2022 1234"),
                     onInputChange = {},
                     onSaveKey = {},
                     onClearKey = { cleared = true }
@@ -111,13 +110,13 @@ class ApiKeySectionTest {
             }
         }
 
-        // Confirmar → onClearKey
+        // Confirmar -> onClearKey
         compose.onNodeWithText("Quitar").performClick()
-        compose.onNodeWithText("¿Quitar la API key?").assertIsDisplayed()
-        compose.onNodeWithText("Sí, quitar").performClick()
+        compose.onNodeWithText("\u00BFQuitar la API key?").assertIsDisplayed()
+        compose.onNodeWithText("S\u00ED, quitar").performClick()
         assertTrue(cleared)
 
-        // Cancelar → sin callback
+        // Cancelar -> sin callback
         cleared = false
         compose.onNodeWithText("Quitar").performClick()
         compose.onNodeWithText("Cancelar").performClick()

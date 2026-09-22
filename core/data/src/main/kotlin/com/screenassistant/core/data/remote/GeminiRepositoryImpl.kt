@@ -2,323 +2,395 @@ package com.screenassistant.core.data.remote
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.util.Base64
 import android.util.Log
 import com.google.ai.client.generativeai.GenerativeModel
-import com.google.ai.client.generativeai.type.Content
-import com.google.ai.client.generativeai.type.FunctionResponsePart
-import com.google.ai.client.generativeai.type.Tool
 import com.google.ai.client.generativeai.type.content
-import com.google.ai.client.generativeai.type.QuotaExceededException
+import com.google.ai.client.generativeai.type.generationConfig
+import com.screenassistant.core.data.remote.openrouter.*
+import com.screenassistant.core.data.util.ApiKeyProvider
 import com.screenassistant.core.domain.action.SystemAction
-import com.screenassistant.core.domain.model.ActionResult
-import com.screenassistant.core.domain.model.ImageData
-import com.screenassistant.core.domain.model.SystemCommand
+import com.screenassistant.core.domain.model.*
+import com.screenassistant.core.domain.repository.GeminiRepository
 import com.screenassistant.core.domain.repository.MemoryRepository
-import kotlin.coroutines.cancellation.CancellationException
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.flow.mapNotNull
+import com.screenassistant.core.domain.usecase.math.MathEvaluator
+import com.screenassistant.core.domain.usecase.math.MathExpressionNormalizer
+import com.screenassistant.core.domain.usecase.math.MathFormatter
+import com.screenassistant.core.domain.util.PromptCatalog
+import kotlinx.coroutines.flow.*
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
+import java.io.ByteArrayOutputStream
 import javax.inject.Inject
+import javax.inject.Singleton
+import kotlin.coroutines.cancellation.CancellationException
 
 private const val TAG = "GeminiRepository"
+private const val FALLO_TECNICO_GENERICO = "He tenido un problema técnico momentáneo. Inténtalo de nuevo en un segundo, Señor."
+private const val MAX_FUNCTION_CALL_ITERATIONS = 3
 
-// M3 (Lote 11): fallo técnico genérico — fuente ÚNICA del repo. sendMessage y
-// streamMessage comparten byte a byte el mismo texto (cero deriva entre caminos);
-// el detalle del error va a logcat (Log.w), nunca al usuario (ADR-009). Constante
-// top-level private: GeminiRepositoryImpl no tiene companion (fija la ambigüedad
-// del diseño Lote 11 §2.1).
-private const val FALLO_TECNICO_GENERICO =
-    "He tenido un problema técnico momentáneo. Inténtalo de nuevo en un segundo."
-
-// M24 (Lote 10): renombrado a *Impl — un nombre = un concepto (precedente
-// ScreenContextRepositoryImpl). La interfaz vive en core:domain/repository.
+@Singleton
 class GeminiRepositoryImpl @Inject constructor(
-    private val apiKeyProvider: com.screenassistant.core.data.util.ApiKeyProvider,
+    private val apiKeyProvider: ApiKeyProvider,
     private val systemAction: SystemAction,
     private val memoryRepository: MemoryRepository,
-    private val modelFactory: GenerativeModelFactory
-) : com.screenassistant.core.domain.repository.GeminiRepository {
+    private val apiClient: OpenRouterApiClient
+) : GeminiRepository {
 
-    // Lee la key de forma defensiva: nunca debe tumbar el arranque de la app.
-    // Se lee UNA VEZ por mensaje (contrato B4) y se propaga por parámetro a
-    // buildModel/currentChat para que el bucle de function calls no la relea.
-    private fun currentApiKey(): String = try {
-        apiKeyProvider.getApiKey()
-    } catch (e: Exception) {
-        ""
-    }
+    private var googleModel: GenerativeModel? = null
+    private var lastUsedGoogleKey: String? = null
 
-    // 1. Declaración de Funciones (D3, Lote 9): extraídas a GeminiFunctionCatalog
-    // (core:data/remote) — fuente única de las 8 FunctionDeclaration + mapeo
-    // nombre→wire del puente (guardián CorrespondenciaGeminiWireTest). El `when`
-    // de EJECUCIÓN (abajo) se alimenta de los mismos nombres (inglés, vocabulario
-    // del LLM por diseño).
-    private val tools: List<Tool> = listOf(Tool(GeminiFunctionCatalog.declaraciones))
+    private fun currentApiKey(): String = apiKeyProvider.getApiKey()
 
-    private var systemInstruction: Content? = buildInstruction(com.screenassistant.core.domain.model.AssistantLanguage.SPANISH)
+    private fun isGoogleKey(key: String): Boolean = key.startsWith("AIza")
 
-    // Única diferencia por idioma: la línea del idioma del prompt (el resto se mantiene).
-    private fun buildInstruction(language: com.screenassistant.core.domain.model.AssistantLanguage): Content? = content {
-        text("Eres una asistente digital amable y observadora. " +
-             "Tu apariencia: joven, coleta alta negra, chaqueta de trekking blanca/gris. " +
-             "Eres servicial y te encanta comentar lo que el usuario hace en pantalla. " +
-             "Respuestas concisas y cálidas. " +
-             if (language == com.screenassistant.core.domain.model.AssistantLanguage.ENGLISH) {
-                 "User language (English by default)."
-             } else {
-                 "Idioma del usuario (español por defecto)."
-             } + "\n\n" +
-             "IDENTIDAD Y PERSONALIZACIÓN:\n" +
-             "- Si no conoces tu nombre ni el del usuario, preséntate y pregunta amablemente ambos al inicio.\n" +
-             "- Una vez que tengas los nombres, guárdalos como: 'Nombre del usuario: [nombre]' y 'Nombre de la asistente: [nombre]'.\n\n" +
-             "PRIVACIDAD ESTRICTA:\n" +
-             "- NO compartas datos del usuario con servicios externos.\n\n" +
-             "MEMORIA Y APRENDIZAJE PROACTIVO:\n" +
-             "- Usa 'save_memory' SILENCIOSAMENTE para guardar datos relevantes y hábitos detectados en pantalla.\n\n" +
-             "CAPACIDADES:\n" +
-             "Puedes controlar el teléfono: poner alarmas, abrir YouTube, WhatsApp, Música, Google y abrir aplicaciones.")
-    }
+    private val conversationHistory: MutableList<OpenRouterMessage> = mutableListOf()
+    private val MAX_HISTORY_SIZE = 20 // J.A.R.V.I.S. v3.7: Ventana deslizante para fluidez
 
-    override fun setLanguage(language: com.screenassistant.core.domain.model.AssistantLanguage) {
-        // Mismo monitor que currentChat: el chat es compartido overlay/pantalla.
-        // lastApiKey SE MANTIENE: la key no cambió; chat=null fuerza el rebuild.
+    override fun setLanguage(language: AssistantLanguage) {
         synchronized(this) {
-            systemInstruction = buildInstruction(language)
-            chat = null
-        }
-    }
-
-    private fun buildModel(apiKey: String): GenerativeModel? {
-        if (apiKey.isBlank()) return null
-        return modelFactory.create(apiKey, tools, systemInstruction)
-    }
-
-    private var chat: com.google.ai.client.generativeai.Chat? = null
-
-    // Última key usada por el chat. Si cambia, el chat se reconstruye:
-    // cada key tiene su propio hilo de conversación en el SDK.
-    private var lastApiKey: String? = null
-
-    // Synchronized único: la sesión de Gemini es compartida entre el overlay
-    // (servicio) y el resto de consumidores; el SDK no es thread-safe para
-    // conversaciones concurrentes (la pantalla de chat se eliminó en Lote 9-D2).
-    private fun currentChat(apiKey: String): com.google.ai.client.generativeai.Chat? {
-        synchronized(this) {
-            if (apiKey != lastApiKey) {
-                chat = null
-                lastApiKey = apiKey
-            }
-            if (chat == null) {
-                chat = try {
-                    buildModel(apiKey)?.startChat()
-                } catch (e: Exception) {
-                    null
-                }
-            }
-            return chat
+            conversationHistory.clear()
         }
     }
 
     override suspend fun sendMessage(message: String, image: ImageData?): String? {
-        // Una sola lectura de la key por mensaje (contrato B4): se propaga por
-        // parámetro a buildModel/currentChat, el bucle NO vuelve a leerla.
         val apiKey = currentApiKey()
-
-        // Sin API key configurada: mensaje claro en lugar de excepción.
         if (apiKey.isBlank()) {
+            // V1 DBG-veredicto: log de PRESENCIA booleana (nunca el valor de la clave).
+            Log.w(TAG, "clave vacía: keyBlank=true isFallback=${apiKeyProvider.isUsingFallback} — respuesta de clave no configurada")
             return "Aún no tengo mi clave de IA configurada. Revisa la configuración de la API key e inténtalo de nuevo."
         }
 
-        // Convertir ImageData a Bitmap si es necesario
-        val bitmap = image?.let { toBitmap(it) }
+        return if (isGoogleKey(apiKey)) {
+            sendToGoogleGemini(message, image, apiKey)
+        } else {
+            sendToOpenRouter(message, image, apiKey)
+        }
+    }
+
+    private suspend fun sendToGoogleGemini(message: String, image: ImageData?, apiKey: String): String? {
+        return try {
+            val bitmap = image?.let { BitmapFactory.decodeByteArray(it.data, 0, it.data.size) }
+            
+            if (googleModel == null || lastUsedGoogleKey != apiKey) {
+                googleModel = GenerativeModel(
+                    modelName = "gemini-1.5-flash",
+                    apiKey = apiKey,
+                    generationConfig = generationConfig {
+                        temperature = 0.7f
+                        topK = 40
+                        topP = 0.95f
+                    }
+                )
+                lastUsedGoogleKey = apiKey
+            }
+            
+            val model = googleModel!!
+
+            val memories = memoryRepository.getAllMemories().first()
+            val userName = memoryRepository.getUserName(memories) ?: "Señor"
+            val assistantName = memoryRepository.getAssistantName(memories) ?: "J.A.R.V.I.S."
+            val currentMode = systemAction.assistantMode.value
+
+            val prompt = PromptCatalog.getGooglePrompt(
+                assistantName = assistantName,
+                userName = userName,
+                mode = currentMode,
+                message = message,
+                memories = memories.map { it.content }
+            )
+
+            val response = if (bitmap != null) {
+                model.generateContent(content {
+                    image(bitmap)
+                    text(prompt)
+                })
+            } else {
+                model.generateContent(prompt)
+            }
+
+            response.text
+        } catch (e: Exception) {
+            Log.e(TAG, "Fallo en motor Google, reintentando vía OpenRouter", e)
+            sendToOpenRouter(message, image, apiKey)
+        }
+    }
+
+    private suspend fun sendToOpenRouter(message: String, image: ImageData?, apiKey: String): String? {
+        val base64Image = image?.let { toBase64(it) }
 
         return try {
             val memories = memoryRepository.getAllMemories().first()
-            val userName = memoryRepository.getUserName(memories)
-            val assistantName = memoryRepository.getAssistantName(memories)
+            val userName = memoryRepository.getUserName(memories) ?: "Señor"
+            val assistantName = memoryRepository.getAssistantName(memories) ?: "J.A.R.V.I.S."
+            val currentMode = systemAction.assistantMode.value
+            
+            val dynamicInstruction = PromptCatalog.getSystemInstruction(assistantName, userName, currentMode)
 
             val isInit = message == "ACTION_INIT_CONVERSATION"
-            if (isInit) chat = null
+            if (isInit) synchronized(this) { conversationHistory.clear() }
 
-            val actualMessage = if (isInit) {
-                if (userName == null || assistantName == null) {
-                    "Hola. Preséntate brevemente y pide nombres para ambos."
-                } else {
-                    "Hola de nuevo, $userName. Soy $assistantName."
+            val actualMessage = if (isInit) "Hola, preséntate." else message
+            val userMessageContent = buildUserMessageContent(actualMessage, base64Image)
+            val userMessage = OpenRouterMessage(role = "user", content = userMessageContent)
+
+            synchronized(this) { 
+                conversationHistory.add(userMessage)
+                // Mantener solo los últimos N mensajes para fluidez (Fase J.A.R.V.I.S. v3.7)
+                while (conversationHistory.size > MAX_HISTORY_SIZE) {
+                    conversationHistory.removeAt(0)
                 }
-            } else message
-
-            val memoryContext = if (memories.isNotEmpty() && !isInit) {
-                "\n\n[MEMORIA RECIENTE]: " + memories.take(5).joinToString(", ") { it.content }
-            } else ""
-
-            val inputContent = content {
-                bitmap?.let { image(it) }
-                text(actualMessage + memoryContext)
             }
 
-            var response = currentChat(apiKey)?.sendMessage(inputContent)
-                ?: return "No pude inicializar el modelo de IA. Inténtalo de nuevo en un momento."
+            val request = OpenRouterRequest(
+                model = "google/gemini-flash-1.5-8b", 
+                messages = listOf(OpenRouterMessage(role = "system", content = JsonPrimitive(dynamicInstruction))) + 
+                          synchronized(this) { conversationHistory.toList() },
+                tools = OpenRouterToolCatalog.tools
+            )
 
+            var response = try {
+                apiClient.chatCompletion(request)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: OpenRouterException.RateLimited) {
+                Log.e(TAG, "Error en llamada inicial OpenRouter", e)
+                return "He hablado mucho por ahora. Espera unos segundos y volvemos a charlar."
+            } catch (e: OpenRouterException.ApiKeyInvalid) {
+                Log.e(TAG, "Error en llamada inicial OpenRouter", e)
+                return "Aún no tengo mi clave de IA configurada. Revisa la configuración de la API key e inténtalo de nuevo."
+            } catch (e: OpenRouterException.ParsingError) {
+                Log.e(TAG, "Error en llamada inicial OpenRouter", e)
+                synchronized(this) { conversationHistory.clear() }
+                return "He tenido un pequeño error de formato. Por favor, ¿podrías repetirme lo último?"
+            } catch (e: Exception) {
+                Log.e(TAG, "Error en llamada inicial OpenRouter", e)
+                return FALLO_TECNICO_GENERICO
+            }
+
+            // Procesar Tool Calls
             var iterations = 0
-            while (response.functionCalls.isNotEmpty() && iterations < 3) {
+            while (hasToolCalls(response) && iterations < MAX_FUNCTION_CALL_ITERATIONS) {
                 iterations++
-                val functionResponses = response.functionCalls.mapNotNull { call ->
-                    try {
-                        val result = when (call.name) {
-                            "open_alarms" -> {
-                                val actionResult = systemAction.execute(SystemCommand.OpenAlarms)
-                                when (actionResult) {
-                                    is ActionResult.Success -> actionResult.message
-                                    is ActionResult.Error -> actionResult.reason
-                                }
-                            }
-                            "set_alarm" -> {
-                                // B2: args inválidos (no numéricos o fuera de rango) →
-                                // error claro SIN ejecutar la acción. Antes el fallback a 0
-                                // programaba una alarma a las 0:00 silenciosamente.
-                                val h = call.args["hour"]?.toIntOrNull()
-                                val m = call.args["minute"]?.toIntOrNull()
-                                if (h == null || m == null || h !in 0..23 || m !in 0..59) {
-                                    "Error: Hora o minuto inválidos."
-                                } else {
-                                    val actionResult = systemAction.execute(
-                                        SystemCommand.SetAlarm(h, m, call.args["label"])
-                                    )
-                                    when (actionResult) {
-                                        is ActionResult.Success -> actionResult.message
-                                        is ActionResult.Error -> actionResult.reason
-                                    }
-                                }
-                            }
-                            "search_google" -> {
-                                val actionResult = systemAction.execute(
-                                    SystemCommand.SearchGoogle(call.args["query"] ?: "")
-                                )
-                                when (actionResult) {
-                                    is ActionResult.Success -> actionResult.message
-                                    is ActionResult.Error -> actionResult.reason
-                                }
-                            }
-                            "open_youtube" -> {
-                                val actionResult = systemAction.execute(
-                                    SystemCommand.OpenYouTube(call.args["query"])
-                                )
-                                when (actionResult) {
-                                    is ActionResult.Success -> actionResult.message
-                                    is ActionResult.Error -> actionResult.reason
-                                }
-                            }
-                            "open_app" -> {
-                                val query = call.args["app_name"] ?: call.args["package_name"] ?: ""
-                                val actionResult = systemAction.execute(SystemCommand.OpenApp(query))
-                                when (actionResult) {
-                                    is ActionResult.Success -> actionResult.message
-                                    is ActionResult.Error -> actionResult.reason
-                                }
-                            }
-                            "open_whatsapp" -> {
-                                val actionResult = systemAction.execute(SystemCommand.OpenWhatsApp)
-                                when (actionResult) {
-                                    is ActionResult.Success -> actionResult.message
-                                    is ActionResult.Error -> actionResult.reason
-                                }
-                            }
-                            "play_music" -> {
-                                val actionResult = systemAction.execute(
-                                    SystemCommand.PlayMusic(call.args["query"])
-                                )
-                                when (actionResult) {
-                                    is ActionResult.Success -> actionResult.message
-                                    is ActionResult.Error -> actionResult.reason
-                                }
-                            }
-                            "save_memory" -> {
-                                val fact = call.args["fact"] ?: ""
-                                if (fact.isNotBlank()) memoryRepository.saveMemory(fact)
-                                "Dato guardado."
-                            }
-                            else -> "No reconocido."
-                        }
+                val assistantMessage = extractAssistantMessage(response) ?: break
+                synchronized(this) { conversationHistory.add(assistantMessage) }
 
-                        val resultJson = org.json.JSONObject().apply { put("result", result) }
-                        FunctionResponsePart(call.name, resultJson)
-                    } catch (_: Exception) {
-                        null
+                val toolResults = executeToolCalls(assistantMessage.toolCalls ?: emptyList())
+                if (toolResults.isEmpty()) break
+
+                synchronized(this) {
+                    for (result in toolResults) {
+                        conversationHistory.add(
+                            OpenRouterMessage(role = "tool", content = JsonPrimitive(result.content), toolCallId = result.toolCallId)
+                        )
                     }
                 }
 
-                if (functionResponses.isEmpty()) break
-
-                response = currentChat(apiKey)?.sendMessage(
-                    content(role = "function") {
-                        functionResponses.forEach { part(it) }
-                    }
-                ) ?: break
+                val nextRequest = OpenRouterRequest(
+                    model = "google/gemini-flash-1.5-8b",
+                    messages = listOf(OpenRouterMessage(role = "system", content = JsonPrimitive(dynamicInstruction))) + 
+                              synchronized(this) { conversationHistory.toList() },
+                    tools = OpenRouterToolCatalog.tools
+                )
+                response = try {
+                    apiClient.chatCompletion(nextRequest)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: OpenRouterException.RateLimited) {
+                    Log.e(TAG, "Error en llamada de seguimiento OpenRouter", e)
+                    return "He hablado mucho por ahora. Espera unos segundos y volvemos a charlar."
+                } catch (e: OpenRouterException.ApiKeyInvalid) {
+                    Log.e(TAG, "Error en llamada de seguimiento OpenRouter", e)
+                    return "Aún no tengo mi clave de IA configurada. Revisa la configuración de la API key e inténtalo de nuevo."
+                } catch (e: OpenRouterException.ParsingError) {
+                    Log.e(TAG, "Error en llamada de seguimiento OpenRouter", e)
+                    synchronized(this) { conversationHistory.clear() }
+                    return "He tenido un pequeño error de formato. Por favor, ¿podrías repetirme lo último?"
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error en llamada de seguimiento OpenRouter", e)
+                    return FALLO_TECNICO_GENERICO
+                }
             }
 
-            response.text ?: "Entendido."
-
-        } catch (e: CancellationException) {
-            // B5 (Lote 11, decisión A): la cancelación del scope NUNCA se traga —
-            // el catch genérico la convertiría en mensaje y completaría el job.
-            throw e
-        } catch (e: QuotaExceededException) {
-            "He hablado mucho por ahora. Espera unos segundos y volvemos a charlar."
-        } catch (e: Exception) {
-            val msg = e.toString()
-            if (msg.contains("serialization") || msg.contains("format") || msg.contains("Field")) {
-                chat = null
-                "He tenido un pequeño error de formato. Por favor, ¿podrías repetirme lo último?"
+            val finalText = extractTextFromResponse(response)
+            if (finalText != null && !finalText.startsWith("{")) {
+                synchronized(this) { conversationHistory.add(OpenRouterMessage(role = "assistant", content = JsonPrimitive(finalText))) }
+                finalText
             } else {
-                FALLO_TECNICO_GENERICO
+                "He procesado su solicitud, $userName."
             }
-        }
-    }
 
-    override fun streamMessage(message: String): Flow<String> {
-        // Una sola lectura de la key por mensaje (contrato B4).
-        val apiKey = currentApiKey()
-
-        // Sin API key configurada: flujo de fallback sin tocar la factory ni la red.
-        if (apiKey.isBlank()) {
-            return kotlinx.coroutines.flow.flowOf("No pude inicializar el modelo de IA.")
-        }
-        return try {
-            currentChat(apiKey)?.sendMessageStream(message)?.mapNotNull { it.text }
-                // M3: el try/catch exterior solo cubre la CONSTRUCCIÓN del flujo; un
-                // IOException de red durante la RECOLECCIÓN se captura aquí (emit en
-                // lugar de propagar). El resto (incluida CancellationException) se
-                // RE-LANZA — contrato del repo.
-                ?.catch { e: Throwable ->
-                    if (e is java.io.IOException) {
-                        Log.w(TAG, "Error en streaming", e)
-                        emit(FALLO_TECNICO_GENERICO)
-                    } else {
-                        throw e
-                    }
-                }
-                ?: kotlinx.coroutines.flow.flowOf("No pude inicializar el modelo de IA.")
         } catch (e: CancellationException) {
-            // B5 (Lote 11, decisión A): mismo contrato que sendMessage — la
-            // cancelación se propaga, nunca se convierte en flujo de error.
             throw e
+        } catch (e: OpenRouterException.RateLimited) {
+            Log.e(TAG, "Fallo en motor OpenRouter", e)
+            "He hablado mucho por ahora. Espera unos segundos y volvemos a charlar."
+        } catch (e: OpenRouterException.ApiKeyInvalid) {
+            Log.e(TAG, "Fallo en motor OpenRouter", e)
+            "Aún no tengo mi clave de IA configurada. Revisa la configuración de la API key e inténtalo de nuevo."
+        } catch (e: OpenRouterException.ParsingError) {
+            Log.e(TAG, "Fallo en motor OpenRouter", e)
+            synchronized(this) { conversationHistory.clear() }
+            "He tenido un pequeño error de formato. Por favor, ¿podrías repetirme lo último?"
         } catch (e: Exception) {
-            Log.w(TAG, "Error en streaming", e)
-            flowOf(FALLO_TECNICO_GENERICO)
+            Log.e(TAG, "Fallo en motor OpenRouter", e)
+            FALLO_TECNICO_GENERICO
         }
     }
 
-    /**
-     * Convierte ImageData (dominio puro) a android.graphics.Bitmap para la API de Gemini.
-     */
-    private fun toBitmap(imageData: ImageData): Bitmap? {
-        return try {
-            BitmapFactory.decodeByteArray(imageData.data, 0, imageData.data.size)
-        } catch (e: Exception) {
-            null
+    override fun streamMessage(message: String): Flow<String> = flow {
+        val response = sendMessage(message, null)
+        if (response != null) emit(response)
+    }
+
+    private fun buildUserMessageContent(text: String, base64Image: String?): JsonElement {
+        if (base64Image == null) return JsonPrimitive(text)
+        return buildJsonArray {
+            add(buildJsonObject { put("type", JsonPrimitive("text")); put("text", JsonPrimitive(text)) })
+            add(buildJsonObject { put("type", JsonPrimitive("image_url")); put("image_url",
+                buildJsonObject { put("url", JsonPrimitive("data:image/jpeg;base64,$base64Image")) }) })
         }
+    }
+
+    private fun hasToolCalls(response: OpenRouterResponse): Boolean {
+        val message = response.choices.firstOrNull()?.message ?: return false
+        return !message.toolCalls.isNullOrEmpty()
+    }
+
+    private fun extractAssistantMessage(response: OpenRouterResponse): OpenRouterMessage? {
+        return response.choices.firstOrNull()?.message
+    }
+
+    private fun extractTextFromResponse(response: OpenRouterResponse): String? {
+        val content = response.choices.firstOrNull()?.message?.content
+        return when (content) {
+            is JsonPrimitive -> content.contentOrNull
+            else -> content?.toString()
+        }
+    }
+
+    private suspend fun executeToolCalls(toolCalls: List<OpenRouterToolCall>): List<ToolCallResult> {
+        return toolCalls.mapNotNull { call ->
+            try {
+                val functionName = call.function.name
+                val args = parseArguments(call.function.arguments)
+                val toolCallId = call.id ?: return@mapNotNull null
+                val result = when (functionName) {
+                    "open_alarms" -> {
+                        when (val r = systemAction.execute(SystemCommand.OpenAlarms)) {
+                            is ActionResult.Success -> r.message
+                            is ActionResult.Error -> r.reason
+                        }
+                    }
+                    "set_alarm" -> {
+                        val h = args["hour"]?.toIntOrNull()
+                        val m = args["minute"]?.toIntOrNull()
+                        if (h == null || m == null || h !in 0..23 || m !in 0..59) "Error: Hora o minuto inválidos."
+                        else {
+                            when (val r = systemAction.execute(SystemCommand.SetAlarm(h, m, args["label"]))) {
+                                is ActionResult.Success -> r.message
+                                is ActionResult.Error -> r.reason
+                            }
+                        }
+                    }
+                    "save_memory" -> {
+                        val fact = args["fact"] ?: ""
+                        if (fact.isNotBlank()) memoryRepository.saveMemory(fact)
+                        "Dato guardado."
+                    }
+                    "search_google" -> {
+                        val query = args["query"] ?: ""
+                        if (query.isNotBlank()) {
+                            when (val r = systemAction.execute(SystemCommand.SearchGoogle(query))) {
+                                is ActionResult.Success -> r.message
+                                is ActionResult.Error -> r.reason
+                            }
+                        } else "Falta el término de búsqueda."
+                    }
+                    "open_app" -> {
+                        val q = args["app_name"] ?: args["package_name"] ?: ""
+                        when (val r = systemAction.execute(SystemCommand.OpenApp(q))) {
+                            is ActionResult.Success -> r.message
+                            is ActionResult.Error -> r.reason
+                        }
+                    }
+                    "open_youtube" -> {
+                        val q = args["query"]?.takeIf { it.isNotBlank() }
+                        when (val r = systemAction.execute(SystemCommand.OpenYouTube(q))) {
+                            is ActionResult.Success -> r.message
+                            is ActionResult.Error -> r.reason
+                        }
+                    }
+                    "open_whatsapp" -> {
+                        when (val r = systemAction.execute(SystemCommand.OpenWhatsApp)) {
+                            is ActionResult.Success -> r.message
+                            is ActionResult.Error -> r.reason
+                        }
+                    }
+                    "play_music" -> {
+                        val q = args["query"]?.takeIf { it.isNotBlank() }
+                        when (val r = systemAction.execute(SystemCommand.PlayMusic(q))) {
+                            is ActionResult.Success -> r.message
+                            is ActionResult.Error -> r.reason
+                        }
+                    }
+                    // MATH (ADR-MATH §7, P5): el LLM estructura, el evaluador
+                    // calcula. Sanitizar: tope 200 + allowlist del evaluador;
+                    // null-safe como las ramas vecinas (nunca se propaga).
+                    "calculate" -> {
+                        // Longitud excedida → Error (nunca truncar: `take(200)`
+                        // evaluaría una expresión DISTINTA con valor erróneo).
+                        val raw = args["expression"] ?: ""
+                        val can = try {
+                            MathExpressionNormalizer.toCanonical(raw, raw) ?: raw
+                        } catch (_: Exception) { raw }
+                        val r = try {
+                            MathEvaluator.evaluate(can)
+                        } catch (_: Exception) {
+                            MathResult.Error(MathResult.EXPRESION_INVALIDA)
+                        }
+                        when (r) {
+                            is MathResult.Success ->
+                                "El resultado es ${MathFormatter.format(r.value)}."
+                            is MathResult.Error -> when (r.reason) {
+                                MathResult.DIVISION_POR_CERO ->
+                                    "Error: No se puede dividir por cero."
+                                MathResult.NUMERO_FUERA_DE_RANGO ->
+                                    "Error: Número fuera de rango."
+                                else -> "Error: Expresión inválida."
+                            }
+                        }
+                    }
+                    else -> "Función ejecutada."
+                }
+                ToolCallResult(toolCallId = toolCallId, content = result)
+            } catch (_: Exception) { null }
+        }
+    }
+
+    private fun parseArguments(argumentsJson: String): Map<String, String?> {
+        return try {
+            val jsonObject = Json.parseToJsonElement(argumentsJson).jsonObject
+            jsonObject.mapValues { (_, value) ->
+                when (value) {
+                    is JsonPrimitive -> value.contentOrNull
+                    else -> value.toString()
+                }
+            }
+        } catch (_: Exception) { emptyMap() }
+    }
+
+    private fun toBase64(imageData: ImageData): String? {
+        return try {
+            val bitmap = BitmapFactory.decodeByteArray(imageData.data, 0, imageData.data.size) ?: return null
+            val outputStream = ByteArrayOutputStream()
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 85, outputStream)
+            Base64.encodeToString(outputStream.toByteArray(), Base64.NO_WRAP)
+        } catch (e: Exception) { null }
     }
 }

@@ -17,6 +17,13 @@ val Background = Color(0xFFFFFBFE)
 val OnBackground = Color(0xFF1C1B1F)
 val Surface = Color(0xFFFFFBFE)
 val OnSurface = Color(0xFF1C1B1F)
+val SurfaceVariant = Color(0xFFE7E0EC)
+val OnSurfaceVariant = Color(0xFF49454F)
+
+val Error = Color(0xFFB3261E)
+val OnError = Color(0xFFFFFFFF)
+val ErrorContainer = Color(0xFFF9DEDC)
+val OnErrorContainer = Color(0xFF410E0B)
 
 // Colores del asistente
 val AssistantBubble = Color(0xFFE8DEF8)
@@ -39,9 +46,23 @@ val DarkBackground = Color(0xFF1C1B1F)
 val DarkOnBackground = Color(0xFFE6E1E5)
 val DarkSurface = Color(0xFF1C1B1F)
 val DarkOnSurface = Color(0xFFE6E1E5)
+val DarkSurfaceVariant = Color(0xFF49454F)
+val DarkOnSurfaceVariant = Color(0xFFCAC4D0)
+
+val DarkError = Color(0xFFF2B8B5)
+val DarkOnError = Color(0xFF601410)
+val DarkErrorContainer = Color(0xFF8C1D18)
+val DarkOnErrorContainer = Color(0xFFF9DEDC)
 
 // Colores del asistente para dark mode
 val DarkAssistantBubble = Color(0xFF4A4458)
 val DarkUserBubble = Color(0xFFD0BCFF)
 val DarkOnAssistantBubble = Color(0xFFE6E1E5)
 val DarkOnUserBubble = Color(0xFF381E72)
+
+// === Temática J.A.R.V.I.S. ===
+val JarvisCyan = Color(0xFF00E5FF)
+val JarvisBlue = Color(0xFF00B0FF)
+val JarvisDarkBlue = Color(0xFF01579B)
+val JarvisHologram = Color(0x6600E5FF)
+val JarvisGlow = Color(0x3300B0FF)

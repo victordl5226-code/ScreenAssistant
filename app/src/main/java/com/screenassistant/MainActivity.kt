@@ -3,27 +3,50 @@ package com.screenassistant
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import android.Manifest
+import android.content.ComponentName
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import android.util.Log
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Psychology
+import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -32,12 +55,21 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.LifecycleResumeEffect
+import androidx.navigation.compose.rememberNavController
 import com.screenassistant.core.ui.theme.ScreenAssistantTheme
 import com.screenassistant.feature.overlay.AssistantOverlayService
+import com.screenassistant.feature.overlay.onboarding.OnboardingScreen
+import com.screenassistant.feature.overlay.onboarding.OnboardingViewModel
+import com.screenassistant.feature.overlay.ui.settings.LocalLlmSettingsScreen
+import com.screenassistant.feature.iot.ui.settings.IoTSettingsScreen
+import com.screenassistant.feature.iot.ui.permissions.IoTPermissionsScreen
 import com.screenassistant.service.system.ScreenContextService
 import com.screenassistant.ui.apikey.ApiKeySection
 import com.screenassistant.ui.apikey.ApiKeyViewModel
@@ -50,9 +82,6 @@ import dagger.hilt.android.AndroidEntryPoint
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
-    // M14: cadena de permisos — launchers a nivel de Activity (registerForActivityResult)
-    // para poder CONTINUAR la cadena desde onResume al volver de Settings de superposición
-    // sin depender del estado de composición.
     private var startPending = false
 
     private val micPermissionLauncher = registerForActivityResult(
@@ -65,16 +94,11 @@ class MainActivity : ComponentActivity() {
 
     private val multiplePermissionsLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
-    ) {
-        // Just log or update UI if needed
-    }
+    ) { }
 
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) {
-        // M14: tras el diálogo de notificaciones (concedido O denegado — en 13+ el FGS
-        // arranca aunque la notificación no sea visible) la cadena CONTINÚA: se pasa a
-        // la siguiente etapa (superposición) en vez de abortar el arranque.
         requestOverlayOrContinue()
     }
 
@@ -83,29 +107,71 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             ScreenAssistantTheme {
-                val apiKeyViewModel: ApiKeyViewModel = hiltViewModel()
-                val apiKeyUiState by apiKeyViewModel.uiState.collectAsState()
+                val onboardingViewModel: OnboardingViewModel = hiltViewModel()
+                val onboardingState by onboardingViewModel.uiState.collectAsState()
 
-                val puenteViewModel: PuenteSettingsViewModel = hiltViewModel()
-                val puenteUiState by puenteViewModel.uiState.collectAsState()
+                if (onboardingState.isOnboardingCompleted) {
+                    val apiKeyViewModel: ApiKeyViewModel = hiltViewModel()
+                    val apiKeyUiState by apiKeyViewModel.uiState.collectAsState()
 
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    MainScreen(
-                        modifier = Modifier.padding(innerPadding),
-                        onStartService = { checkAndStartService() },
-                        onStopService = { stopAssistantService() },
-                        onRequestExtraPermissions = { requestExtraPermissions() },
-                        apiKeyUiState = apiKeyUiState,
-                        onApiKeyInputChange = apiKeyViewModel::onInputChange,
-                        onApiKeySave = apiKeyViewModel::saveKey,
-                        onApiKeyClear = apiKeyViewModel::clearKey,
-                        puenteUiState = puenteUiState,
-                        onPuenteTokenChange = puenteViewModel::onTokenChange,
-                        onPuenteUrlFlagChange = puenteViewModel::onUrlFlagChange,
-                        onPuentePackageRespuestaChange = puenteViewModel::onPackageRespuestaChange,
-                        onPuenteAutoRemoteKeyChange = puenteViewModel::onAutoRemoteKeyChange,
-                        onPuenteSave = puenteViewModel::save,
-                        onPuenteClearKey = puenteViewModel::clearKey
+                    val puenteViewModel: PuenteSettingsViewModel = hiltViewModel()
+                    val puenteUiState by puenteViewModel.uiState.collectAsState()
+
+                    var showLocalLlmSettings by remember { mutableStateOf(false) }
+                    var showIotSettings by remember { mutableStateOf(false) }
+                    var showIotPermissions by remember { mutableStateOf(false) }
+
+                    Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+                        when {
+                            showLocalLlmSettings -> {
+                                LocalLlmSettingsScreen(
+                                    onBack = { showLocalLlmSettings = false }
+                                )
+                            }
+                            showIotPermissions -> {
+                                IoTPermissionsScreen(
+                                    onBack = { showIotPermissions = false }
+                                )
+                            }
+                            showIotSettings -> {
+                                IoTSettingsScreen(
+                                    onNavigateToPermissions = { showIotPermissions = true },
+                                    onBack = { showIotSettings = false }
+                                )
+                            }
+                            else -> {
+                                MainScreen(
+                                    modifier = Modifier.padding(innerPadding),
+                                    onStartService = { checkAndStartService() },
+                                    onStopService = { stopAssistantService() },
+                                    onRequestExtraPermissions = { requestExtraPermissions() },
+                                    onNavigateToLocalLlmSettings = { 
+                                        Log.d("MainActivity", "Navigating to Local LLM")
+                                        showLocalLlmSettings = true 
+                                    },
+                                    onNavigateToIotSettings = { 
+                                        Log.d("MainActivity", "Navigating to IoT Settings")
+                                        showIotSettings = true 
+                                    },
+                                    apiKeyUiState = apiKeyUiState,
+                                    onApiKeyInputChange = apiKeyViewModel::onInputChange,
+                                    onApiKeySave = apiKeyViewModel::saveKey,
+                                    onApiKeyClear = apiKeyViewModel::clearKey,
+                                    puenteUiState = puenteUiState,
+                                    onPuenteTokenChange = puenteViewModel::onTokenChange,
+                                    onPuenteUrlFlagChange = puenteViewModel::onUrlFlagChange,
+                                    onPuentePackageRespuestaChange = puenteViewModel::onPackageRespuestaChange,
+                                    onPuenteAutoRemoteKeyChange = puenteViewModel::onAutoRemoteKeyChange,
+                                    onPuenteSave = puenteViewModel::save,
+                                    onPuenteClearKey = puenteViewModel::clearKey
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    OnboardingScreen(
+                        viewModel = onboardingViewModel,
+                        onOnboardingComplete = { }
                     )
                 }
             }
@@ -114,8 +180,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        // M14: al volver de Settings de superposición con el permiso ya concedido, la
-        // cadena continúa AUTOMÁTICAMENTE (sin pedir otra pulsación de "Start").
         if (startPending && Settings.canDrawOverlays(this)) {
             requestMicOrStart()
         }
@@ -135,9 +199,7 @@ class MainActivity : ComponentActivity() {
         multiplePermissionsLauncher.launch(perms.toTypedArray())
     }
 
-    /** Punto de entrada de la cadena de permisos (1 pulsación de "Start"). */
     private fun checkAndStartService() {
-        // 1. Notificaciones (Android 13+)
         if (Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
@@ -146,8 +208,6 @@ class MainActivity : ComponentActivity() {
         requestOverlayOrContinue()
     }
 
-    /** M14 etapa 2: superposición — si falta, marca startPending y abre Settings;
-     *  onResume continúa la cadena al volver con canDrawOverlays=true. */
     private fun requestOverlayOrContinue() {
         if (!Settings.canDrawOverlays(this)) {
             startPending = true
@@ -161,7 +221,6 @@ class MainActivity : ComponentActivity() {
         requestMicOrStart()
     }
 
-    /** M14 etapa 3: micrófono — si ya está concedido, arranca el servicio directo. */
     private fun requestMicOrStart() {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
@@ -173,7 +232,7 @@ class MainActivity : ComponentActivity() {
 
     private fun startAssistantService() {
         val intent = Intent(this, AssistantOverlayService::class.java)
-        androidx.core.content.ContextCompat.startForegroundService(this, intent)
+        ContextCompat.startForegroundService(this, intent)
     }
 
     private fun stopAssistantService() {
@@ -182,12 +241,15 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(
     modifier: Modifier = Modifier,
     onStartService: () -> Unit,
     onStopService: () -> Unit,
     onRequestExtraPermissions: () -> Unit,
+    onNavigateToLocalLlmSettings: () -> Unit,
+    onNavigateToIotSettings: () -> Unit,
     apiKeyUiState: UiState,
     onApiKeyInputChange: (String) -> Unit,
     onApiKeySave: (String) -> Unit,
@@ -200,107 +262,266 @@ fun MainScreen(
     onPuenteSave: () -> Unit,
     onPuenteClearKey: () -> Unit
 ) {
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val context = LocalContext.current
     var isAccessibilityEnabled by remember {
         mutableStateOf(isAccessibilityServiceEnabled(context, ScreenContextService::class.java))
     }
+    var isOverlayEnabled by remember {
+        mutableStateOf(Settings.canDrawOverlays(context))
+    }
 
-    // Refresh status when returning to app
-    androidx.lifecycle.compose.LifecycleResumeEffect(Unit) {
+    LifecycleResumeEffect(Unit) {
         isAccessibilityEnabled = isAccessibilityServiceEnabled(context, ScreenContextService::class.java)
+        isOverlayEnabled = Settings.canDrawOverlays(context)
         onPauseOrDispose { }
     }
 
-    // M1 (ADR-015): las Cards apiladas quedan cortas en pantallas pequeñas →
-    // el Column de MainScreen gana verticalScroll.
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState()),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(
-            text = stringResource(R.string.setup_title),
-            style = MaterialTheme.typography.headlineMedium,
-            modifier = Modifier.padding(16.dp)
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Estado del Servicio de Accesibilidad
-        Surface(
-            color = if (isAccessibilityEnabled) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.errorContainer,
-            shape = RoundedCornerShape(8.dp),
-            modifier = Modifier.padding(horizontal = 16.dp)
-        ) {
-            Text(
-                text = if (isAccessibilityEnabled) {
-                    stringResource(R.string.setup_status_active)
-                } else {
-                    stringResource(R.string.setup_status_inactive)
-                },
-                modifier = Modifier.padding(12.dp),
-                style = MaterialTheme.typography.bodyMedium
+    Column(modifier = modifier.fillMaxSize()) {
+        TopAppBar(
+            title = { Text("J.A.R.V.I.S.") },
+            colors = TopAppBarDefaults.topAppBarColors(
+                containerColor = MaterialTheme.colorScheme.primaryContainer
             )
-        }
-
-        Spacer(modifier = Modifier.height(32.dp))
-
-        // Configuración de la API key de Gemini
-        ApiKeySection(
-            uiState = apiKeyUiState,
-            onInputChange = onApiKeyInputChange,
-            onSaveKey = onApiKeySave,
-            onClearKey = onApiKeyClear,
-            modifier = Modifier.padding(horizontal = 16.dp)
         )
 
-        Spacer(modifier = Modifier.height(32.dp))
+        LazyColumn(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth(),
+            contentPadding = PaddingValues(bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            item {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "\uD83E\uDD16",
+                        style = MaterialTheme.typography.displayMedium
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Un asistente tipo J.A.R.V.I.S.",
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
 
-        // Configuración del puente Tasker (Lote 7 / ADR-015 v1.2): token
-        // compartido F1, privacidad de respuesta F2 y URL callback F3 (flag + key).
-        PuenteSettingsSection(
-            uiState = puenteUiState,
-            onTokenChange = onPuenteTokenChange,
-            onUrlFlagChange = onPuenteUrlFlagChange,
-            onPackageRespuestaChange = onPuentePackageRespuestaChange,
-            onAutoRemoteKeyChange = onPuenteAutoRemoteKeyChange,
-            onSave = onPuenteSave,
-            onClearKey = onPuenteClearKey,
-            modifier = Modifier.padding(horizontal = 16.dp)
-        )
+            item {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surface
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Text(
+                            text = "Estado",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
 
-        Spacer(modifier = Modifier.height(32.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = stringResource(R.string.enable_accessibility),
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            Surface(
+                                color = if (isAccessibilityEnabled)
+                                    MaterialTheme.colorScheme.primaryContainer
+                                else
+                                    MaterialTheme.colorScheme.errorContainer,
+                                shape = RoundedCornerShape(16.dp)
+                            ) {
+                                Text(
+                                    text = if (isAccessibilityEnabled) "Activo" else "Inactivo",
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (isAccessibilityEnabled)
+                                        MaterialTheme.colorScheme.onPrimaryContainer
+                                    else
+                                        MaterialTheme.colorScheme.onErrorContainer
+                                )
+                            }
+                        }
 
-        Button(onClick = onStartService) {
-            Text(stringResource(R.string.start_assistant))
-        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Superposición",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            Surface(
+                                color = if (isOverlayEnabled)
+                                    MaterialTheme.colorScheme.primaryContainer
+                                else
+                                    MaterialTheme.colorScheme.errorContainer,
+                                shape = RoundedCornerShape(16.dp)
+                            ) {
+                                Text(
+                                    text = if (isOverlayEnabled) "Activo" else "Inactivo",
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (isOverlayEnabled)
+                                        MaterialTheme.colorScheme.onPrimaryContainer
+                                    else
+                                        MaterialTheme.colorScheme.onErrorContainer
+                                )
+                            }
+                        }
 
-        Spacer(modifier = Modifier.height(16.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = stringResource(R.string.api_key_title),
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            Surface(
+                                color = when {
+                                    apiKeyUiState.isConfigured -> MaterialTheme.colorScheme.primaryContainer
+                                    apiKeyUiState.isDegraded -> MaterialTheme.colorScheme.tertiaryContainer
+                                    else -> MaterialTheme.colorScheme.errorContainer
+                                },
+                                shape = RoundedCornerShape(16.dp)
+                            ) {
+                                Text(
+                                    text = when {
+                                        apiKeyUiState.isConfigured -> "Configurada"
+                                        apiKeyUiState.isDegraded -> "Degradada"
+                                        else -> "Sin clave"
+                                    },
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = when {
+                                        apiKeyUiState.isConfigured -> MaterialTheme.colorScheme.onPrimaryContainer
+                                        apiKeyUiState.isDegraded -> MaterialTheme.colorScheme.onTertiaryContainer
+                                        else -> MaterialTheme.colorScheme.onErrorContainer
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
 
-        Button(onClick = {
-            val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-            context.startActivity(intent)
-        }) {
-            Text(stringResource(R.string.enable_accessibility))
-        }
+            item {
+                Column(
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilledTonalButton(
+                        onClick = onStartService,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(imageVector = Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(text = stringResource(R.string.start_assistant))
+                    }
 
-        Spacer(modifier = Modifier.height(16.dp))
+                    OutlinedButton(
+                        onClick = onStopService,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(imageVector = Icons.Default.Stop, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(text = stringResource(R.string.stop_assistant))
+                    }
 
-        Button(onClick = onRequestExtraPermissions) {
-            Text(stringResource(R.string.setup_grant_offline_permissions))
-        }
+                    OutlinedButton(
+                        onClick = onRequestExtraPermissions,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(imageVector = Icons.Default.Key, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(text = stringResource(R.string.setup_grant_offline_permissions))
+                    }
+                }
+            }
 
-        Spacer(modifier = Modifier.height(16.dp))
+            item {
+                ApiKeySection(
+                    uiState = apiKeyUiState,
+                    onInputChange = onApiKeyInputChange,
+                    onSaveKey = onApiKeySave,
+                    onClearKey = onApiKeyClear,
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
+            }
 
-        Button(onClick = onStopService) {
-            Text(stringResource(R.string.stop_assistant))
+            item {
+                PuenteSettingsSection(
+                    uiState = puenteUiState,
+                    onTokenChange = onPuenteTokenChange,
+                    onUrlFlagChange = onPuenteUrlFlagChange,
+                    onPackageRespuestaChange = onPuentePackageRespuestaChange,
+                    onAutoRemoteKeyChange = onPuenteAutoRemoteKeyChange,
+                    onSave = onPuenteSave,
+                    onClearKey = onPuenteClearKey,
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
+            }
+
+            item {
+                Card(
+                    onClick = onNavigateToLocalLlmSettings,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                ) {
+                    Row(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(imageVector = Icons.Default.Psychology, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(text = "IA Local", style = MaterialTheme.typography.titleMedium)
+                            Text(text = "Inferencia sin conexión", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Icon(imageVector = Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+
+            item {
+                Card(
+                    onClick = onNavigateToIotSettings,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                ) {
+                    Row(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(imageVector = Icons.Default.Home, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(text = "Configuración IoT", style = MaterialTheme.typography.titleMedium)
+                            Text(text = "Domótica, salud y vehículo", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Icon(imageVector = Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
         }
     }
 }
 
-fun isAccessibilityServiceEnabled(context: android.content.Context, service: Class<*>): Boolean {
-    val expectedComponentName = android.content.ComponentName(context, service)
+fun isAccessibilityServiceEnabled(context: Context, service: Class<*>): Boolean {
+    val expectedComponentName = ComponentName(context, service)
     val enabledServices = Settings.Secure.getString(context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
     return enabledServices?.contains(expectedComponentName.flattenToString()) == true
 }

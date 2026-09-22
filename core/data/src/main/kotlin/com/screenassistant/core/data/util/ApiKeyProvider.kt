@@ -38,7 +38,7 @@ class ApiKeyProvider @Inject constructor(
 
     fun getApiKey(): String {
         // getString de la base ya degrada con null en fallo (Log.w interno).
-        return store.getString("gemini_api_key")?.takeIf { it.isNotBlank() } ?: ""
+        return store.getString("openrouter_api_key")?.takeIf { it.isNotBlank() } ?: ""
     }
 
     /**
@@ -52,7 +52,7 @@ class ApiKeyProvider @Inject constructor(
      * tras storeApiKey (validar con [getApiKey] si el dato es crítico).
      */
     fun storeApiKey(key: String) {
-        store.putString("gemini_api_key", key)
+        store.putString("openrouter_api_key", key)
     }
 
     // B4 (Lote 8): siembra inicial desde BuildConfig en el arranque de la app.
@@ -65,12 +65,12 @@ class ApiKeyProvider @Inject constructor(
         if (store.getBoolean("api_key_seeded", false)) return
         store.edit { editor ->
             editor.putBoolean("api_key_seeded", true)
-                .putString("gemini_api_key", buildConfigKey)
+                .putString("openrouter_api_key", buildConfigKey)
         }
     }
 
     fun clearApiKey() {
         // B4: NO se borra api_key_seeded (el usuario la borró → no re-sembrar).
-        store.remove("gemini_api_key")
+        store.remove("openrouter_api_key")
     }
 }

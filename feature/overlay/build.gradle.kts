@@ -16,16 +16,21 @@ android {
     }
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
-    }
-
-    kotlinOptions {
-        jvmTarget = "11"
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
 
     buildFeatures {
         compose = true
+    }
+
+    // LIVE-fix2 BUG-2 (V4): android.util.Log en handleResponse devuelve defaults
+    // en JVM en vez de lanzar "Stub!" (espejo de core:data y service:system).
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+            isReturnDefaultValues = true
+        }
     }
 
     // Lote 12 (M13): cobertura JaCoCo del módulo.
@@ -33,6 +38,13 @@ android {
         debug {
             enableUnitTestCoverage = true
         }
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+        freeCompilerArgs.add("-opt-in=kotlin.RequiresOptIn")
     }
 }
 
@@ -57,13 +69,13 @@ private val jacocoClassFilter = listOf(
     "**/*_GeneratedInjector.class"
 )
 
-private fun jacocoClassTree(): FileTree = fileTree("$buildDir/tmp/kotlin-classes/debug") {
+private fun jacocoClassTree(): FileTree = fileTree(project.layout.buildDirectory.dir("tmp/kotlin-classes/debug").get().asFile) {
     exclude(jacocoClassFilter)
 }
 
 private fun jacocoSources(): FileCollection = files("src/main/java", "src/main/kotlin")
 
-private fun jacocoExec(): FileTree = fileTree("$buildDir/outputs/unit_test_code_coverage/debugUnitTest") {
+private fun jacocoExec(): FileTree = fileTree(project.layout.buildDirectory.dir("outputs/unit_test_code_coverage/debugUnitTest").get().asFile) {
     include("*.exec")
 }
 
@@ -102,6 +114,10 @@ tasks.register<JacocoCoverageVerification>("jacocoTestCoverageVerification") {
 
 dependencies {
     implementation(project(":core:domain"))
+    implementation(project(":core:data"))
+    implementation(project(":core:model"))
+    implementation(project(":core:nlp"))
+    implementation(project(":core:ai:memory"))
     implementation(project(":core:ui"))
 
     implementation("androidx.core:core-ktx:1.15.0")
@@ -118,10 +134,27 @@ dependencies {
     // Hilt
     implementation("com.google.dagger:hilt-android:2.53.1")
     ksp("com.google.dagger:hilt-android-compiler:2.53.1")
+    implementation("androidx.hilt:hilt-navigation-compose:1.2.0")
+
+    // DataStore
+    implementation("androidx.datastore:datastore-preferences:1.1.1")
+    implementation("androidx.datastore:datastore-core:1.1.1")
 
     // Media3 for ExoPlayer
     implementation("androidx.media3:media3-exoplayer:1.5.0")
     implementation("androidx.media3:media3-ui:1.5.0")
+
+    // Vosk STT
+    implementation("com.alphacephei:vosk-android:0.3.47")
+
+    // ONNX for Piper TTS
+    // OPT-3 ciclo 1 (ADR-027 Fase 1 paso 1.2): alineado a 1.21.0 con
+    // core:ai:memory (era 1.19.0). Versión literal igual en ambos archivos;
+    // sin entrada en libs.versions.toml (no refactorizar catálogo en este ciclo).
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.21.0")
+
+    // Porcupine Hotword
+    implementation("ai.picovoice:porcupine-android:3.0.1")
 
     // Coil
     implementation("io.coil-kt:coil-compose:2.7.0")

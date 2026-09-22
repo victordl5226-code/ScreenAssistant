@@ -62,6 +62,16 @@ class EncryptedPrefsStore private constructor(
     }
 
     /**
+     * Obtiene todas las claves que coinciden con el prefijo dado.
+     */
+    fun getKeysWithPrefix(prefix: String): List<String> = try {
+        prefs.all.keys.filter { it.startsWith(prefix) }
+    } catch (e: Exception) {
+        Log.w(tag, "Error obteniendo claves con prefijo $prefix: ${e.message}")
+        emptyList()
+    }
+
+    /**
      * Transacción multi-clave con UN SOLO `apply()` (sin estados intermedios
      * observables). Uso: el sembrado B4 de [ApiKeyProvider] y `guardar()` de
      * [PuenteConfigStore] (P0-2).

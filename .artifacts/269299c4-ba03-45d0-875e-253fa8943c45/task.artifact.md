@@ -1,7 +1,9 @@
-# TODO: Configuración Final de Estabilidad (Gemini 2.0)
+# TODO: Sprint 3 - STT Local (Vosk)
 
-- [x] Cambiar modelo a `gemini-2.0-flash` en `GeminiRepository.kt`
-- [x] Eliminar lógica de reintento redundante que agota la cuota
-- [x] Simplificar el manejo de excepciones para evitar mensajes de error falsos
-- [x] Mantener optimización de imágenes y herramientas
-- [ ] Verificar funcionamiento con el asistente
+- [x] Agregar dependencia de Vosk en `libs.versions.toml`
+- [x] Agregar dependencia de Vosk en `feature/overlay/build.gradle.kts`
+- [x] Sincronizar Gradle
+- [x] Crear `VoskSpeechToTextManager.kt` para reconocimiento offline
+- [x] Actualizar `AssistantOverlayUI.kt` para usar el nuevo motor offline
+- [ ] Guía para el usuario: Descargar modelo de voz español
+- [ ] Verificar funcionamiento en el emulador (si es posible sin el modelo físico)

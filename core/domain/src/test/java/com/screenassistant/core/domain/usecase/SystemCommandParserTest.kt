@@ -2,13 +2,17 @@ package com.screenassistant.core.domain.usecase
 
 import com.screenassistant.core.domain.action.SystemAction
 import com.screenassistant.core.domain.model.ActionResult
+import com.screenassistant.core.domain.model.AssistantMode
 import com.screenassistant.core.domain.model.AssistantLanguage
 import com.screenassistant.core.domain.model.CommandMarkers
 import com.screenassistant.core.domain.model.SystemCommand
 import com.screenassistant.core.domain.model.VolumeAction
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.every
 import io.mockk.mockk
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
@@ -34,11 +38,12 @@ class SystemCommandParserTest {
     @Before
     fun setup() {
         systemAction = mockk()
+        every { systemAction.assistantMode } returns MutableStateFlow(AssistantMode.CENTINELA)
         parser = SystemCommandParser(systemAction)
     }
 
     @Test
-    fun `parse de llamada devuelve el mensaje y ejecuta Call con el contacto`() {
+    fun `parse de llamada devuelve el mensaje y ejecuta Call con el contacto`() = runTest {
         coEvery { systemAction.execute(SystemCommand.Call("Ana")) } returns
             ActionResult.Success("Llamando a Ana...")
 
@@ -49,7 +54,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse de busqueda devuelve el mensaje y ejecuta SearchGoogle con la query`() {
+    fun `parse de busqueda devuelve el mensaje y ejecuta SearchGoogle con la query`() = runTest {
         coEvery { systemAction.execute(SystemCommand.SearchGoogle("gatos")) } returns
             ActionResult.Success("Buscando gatos...")
 
@@ -60,7 +65,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse de alarma con hora 7 30 ejecuta SetAlarm sin etiqueta`() {
+    fun `parse de alarma con hora 7 30 ejecuta SetAlarm sin etiqueta`() = runTest {
         coEvery { systemAction.execute(SystemCommand.SetAlarm(7, 30, null)) } returns
             ActionResult.Success("Alarma a las 7:30.")
 
@@ -72,7 +77,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse de texto sin comando devuelve null y no ejecuta ninguna accion`() {
+    fun `parse de texto sin comando devuelve null y no ejecuta ninguna accion`() = runTest {
         val result = parser.parse("texto sin comando")
 
         assertNull(result)
@@ -80,7 +85,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse devuelve prefijo Error cuando la accion falla`() {
+    fun `parse devuelve prefijo Error cuando la accion falla`() = runTest {
         // M26: stub TIPADO (antes coEvery(any()) no detectaba ramas no ejecutadas).
         coEvery { systemAction.execute(SystemCommand.Call("Ana")) } returns
             ActionResult.Error("no pude llamar")
@@ -96,7 +101,7 @@ class SystemCommandParserTest {
     // ===== M26: casos de voz reales — comportamiento FIJADO (null → Gemini) =====
 
     @Test
-    fun `parse a las 7 y media suelto devuelve null y no ejecuta ninguna accion`() {
+    fun `parse a las 7 y media suelto devuelve null y no ejecuta ninguna accion`() = runTest {
         // Respuesta a "¿a qué hora?" SIN la palabra "alarma": no es un comando
         // (solo la rama alarma usa el TimePhraseParser) → se delega a Gemini.
         val result = parser.parse("a las 7 y media")
@@ -106,7 +111,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse temporizador de 5 sin unidad devuelve null y no ejecuta ninguna accion`() {
+    fun `parse temporizador de 5 sin unidad devuelve null y no ejecuta ninguna accion`() = runTest {
         // "temporizador de 5" sin unidad de duración: la rama 7 exige unidad
         // (minutos/segundos/horas) → no es un comando fiable → Gemini.
         val result = parser.parse("temporizador de 5")
@@ -116,7 +121,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse las 7 suelto devuelve null y no ejecuta ninguna accion`() {
+    fun `parse las 7 suelto devuelve null y no ejecuta ninguna accion`() = runTest {
         // Hora suelta sin verbo ni contexto: no matchea ningún prefijo → Gemini.
         val result = parser.parse("las 7")
 
@@ -127,7 +132,7 @@ class SystemCommandParserTest {
     // ===== Tests de la liquidación de deuda técnica (abre/abrir + fixes de case y 'r' colgante) =====
 
     @Test
-    fun `parse abre whatsapp devuelve mensaje y ejecuta OpenApp con la query`() {
+    fun `parse abre whatsapp devuelve mensaje y ejecuta OpenApp con la query`() = runTest {
         coEvery { systemAction.execute(SystemCommand.OpenApp("whatsapp")) } returns
             ActionResult.Success("Abriendo WhatsApp...")
 
@@ -142,7 +147,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse abrir spotify ejecuta OpenApp con la query`() {
+    fun `parse abrir spotify ejecuta OpenApp con la query`() = runTest {
         coEvery { systemAction.execute(SystemCommand.OpenApp("spotify")) } returns
             ActionResult.Success("Abriendo Spotify...")
 
@@ -156,7 +161,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse ABRE WhatsApp ejecuta OpenApp preservando el case del argumento`() {
+    fun `parse ABRE WhatsApp ejecuta OpenApp preservando el case del argumento`() = runTest {
         coEvery { systemAction.execute(SystemCommand.OpenApp("WhatsApp")) } returns
             ActionResult.Success("Abriendo WhatsApp...")
 
@@ -170,7 +175,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse LLAMA A Ana en mayusculas extrae solo el contacto preservando su case`() {
+    fun `parse LLAMA A Ana en mayusculas extrae solo el contacto preservando su case`() = runTest {
         coEvery { systemAction.execute(SystemCommand.Call("Ana")) } returns
             ActionResult.Success("Llamando a Ana...")
 
@@ -184,7 +189,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse BUSCA GATOS en mayusculas ejecuta SearchGoogle con la query preservada`() {
+    fun `parse BUSCA GATOS en mayusculas ejecuta SearchGoogle con la query preservada`() = runTest {
         coEvery { systemAction.execute(SystemCommand.SearchGoogle("GATOS")) } returns
             ActionResult.Success("Buscando GATOS...")
 
@@ -198,7 +203,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse abre la alarma ejecuta OpenApp y no la heuristica de alarmas`() {
+    fun `parse abre la alarma ejecuta OpenApp y no la heuristica de alarmas`() = runTest {
         coEvery { systemAction.execute(SystemCommand.OpenApp("la alarma")) } returns
             ActionResult.Success("Abriendo la app...")
 
@@ -213,7 +218,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse abre sin argumento devuelve null y no ejecuta ninguna accion`() {
+    fun `parse abre sin argumento devuelve null y no ejecuta ninguna accion`() = runTest {
         val result = parser.parse("abre")
 
         assertNull(result)
@@ -221,7 +226,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse de OpenApp fallido devuelve prefijo Error con la razon`() {
+    fun `parse de OpenApp fallido devuelve prefijo Error con la razon`() = runTest {
         coEvery { systemAction.execute(SystemCommand.OpenApp("whatsapp")) } returns
             ActionResult.Error("no tengo permiso")
 
@@ -234,7 +239,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse buscar gatos extrae la query sin la r colgante`() {
+    fun `parse buscar gatos extrae la query sin la r colgante`() = runTest {
         coEvery { systemAction.execute(SystemCommand.SearchGoogle("gatos")) } returns
             ActionResult.Success("Buscando gatos...")
 
@@ -248,7 +253,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse BUSCAR gatos con verbo en mayusculas extrae la query sin la r colgante`() {
+    fun `parse BUSCAR gatos con verbo en mayusculas extrae la query sin la r colgante`() = runTest {
         coEvery { systemAction.execute(SystemCommand.SearchGoogle("gatos")) } returns
             ActionResult.Success("Buscando gatos...")
 
@@ -262,7 +267,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse ABRIR Spotify ejecuta OpenApp con el case preservado`() {
+    fun `parse ABRIR Spotify ejecuta OpenApp con el case preservado`() = runTest {
         coEvery { systemAction.execute(SystemCommand.OpenApp("Spotify")) } returns
             ActionResult.Success("Abriendo Spotify...")
 
@@ -276,7 +281,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse LLAMAR a Ana ejecuta Call con el contacto extraido`() {
+    fun `parse LLAMAR a Ana ejecuta Call con el contacto extraido`() = runTest {
         coEvery { systemAction.execute(SystemCommand.Call("Ana")) } returns
             ActionResult.Success("Llamando a Ana...")
 
@@ -292,7 +297,7 @@ class SystemCommandParserTest {
     // ===== Fase A: ayuda → marcador HELP (sin handler) =====
 
     @Test
-    fun `parse ayuda devuelve HELP sin ejecutar ninguna accion`() {
+    fun `parse ayuda devuelve HELP sin ejecutar ninguna accion`() = runTest {
         val result = parser.parse("ayuda")
 
         assertEquals(CommandMarkers.HELP, result)
@@ -300,7 +305,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse que puedes hacer devuelve HELP`() {
+    fun `parse que puedes hacer devuelve HELP`() = runTest {
         val result = parser.parse("que puedes hacer")
 
         assertEquals(CommandMarkers.HELP, result)
@@ -308,7 +313,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse comandos devuelve HELP`() {
+    fun `parse comandos devuelve HELP`() = runTest {
         val result = parser.parse("comandos")
 
         assertEquals(CommandMarkers.HELP, result)
@@ -316,7 +321,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse ayuda por favor devuelve HELP`() {
+    fun `parse ayuda por favor devuelve HELP`() = runTest {
         val result = parser.parse("ayuda por favor")
 
         assertEquals(CommandMarkers.HELP, result)
@@ -324,7 +329,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse pregunta en que me puedo ayudar devuelve HELP`() {
+    fun `parse pregunta en que me puedo ayudar devuelve HELP`() = runTest {
         val result = parser.parse("¿En qué me puedo ayudar?")
 
         assertEquals(CommandMarkers.HELP, result)
@@ -332,7 +337,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse en que me puedo ayudar sin signos devuelve HELP`() {
+    fun `parse en que me puedo ayudar sin signos devuelve HELP`() = runTest {
         val result = parser.parse("en que me puedo ayudar")
 
         assertEquals(CommandMarkers.HELP, result)
@@ -340,7 +345,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse que puedes hacer por mi devuelve HELP`() {
+    fun `parse que puedes hacer por mi devuelve HELP`() = runTest {
         val result = parser.parse("que puedes hacer por mi")
 
         assertEquals(CommandMarkers.HELP, result)
@@ -348,7 +353,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse pregunta con signos que puedes hacer devuelve HELP`() {
+    fun `parse pregunta con signos que puedes hacer devuelve HELP`() = runTest {
         val result = parser.parse("¿Qué puedes hacer?")
 
         assertEquals(CommandMarkers.HELP, result)
@@ -356,7 +361,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse pregunta ayuda con signos devuelve HELP`() {
+    fun `parse pregunta ayuda con signos devuelve HELP`() = runTest {
         val result = parser.parse("¿Ayuda?")
 
         assertEquals(CommandMarkers.HELP, result)
@@ -364,7 +369,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse me puedes ayudar devuelve HELP`() {
+    fun `parse me puedes ayudar devuelve HELP`() = runTest {
         val result = parser.parse("¿Me puedes ayudar?")
 
         assertEquals(CommandMarkers.HELP, result)
@@ -372,7 +377,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse en que me puede ayudar ella devuelve HELP`() {
+    fun `parse en que me puede ayudar ella devuelve HELP`() = runTest {
         val result = parser.parse("¿en qué me puede ayudar ella?")
 
         assertEquals(CommandMarkers.HELP, result)
@@ -380,7 +385,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse en que puedes ayudarme devuelve HELP`() {
+    fun `parse en que puedes ayudarme devuelve HELP`() = runTest {
         val result = parser.parse("¿En qué puedes ayudarme?")
 
         assertEquals(CommandMarkers.HELP, result)
@@ -388,7 +393,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse me puedes ayudar a poner una alarma no devuelve HELP y ejecuta la alarma`() {
+    fun `parse me puedes ayudar a poner una alarma no devuelve HELP y ejecuta la alarma`() = runTest {
         coEvery { systemAction.execute(SystemCommand.SetAlarm(7, 0, null)) } returns
             ActionResult.Success("Alarma a las 7:00.")
 
@@ -401,7 +406,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse que puedo hacer devuelve HELP`() {
+    fun `parse que puedo hacer devuelve HELP`() = runTest {
         val result = parser.parse("¿Qué puedo hacer?")
 
         assertEquals(CommandMarkers.HELP, result)
@@ -409,7 +414,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse que sabes hacer devuelve HELP`() {
+    fun `parse que sabes hacer devuelve HELP`() = runTest {
         val result = parser.parse("¿Qué sabes hacer?")
 
         assertEquals(CommandMarkers.HELP, result)
@@ -417,7 +422,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse que comandos tienes devuelve HELP`() {
+    fun `parse que comandos tienes devuelve HELP`() = runTest {
         val result = parser.parse("¿Qué comandos tienes?")
 
         assertEquals(CommandMarkers.HELP, result)
@@ -425,7 +430,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse para que sirves devuelve HELP`() {
+    fun `parse para que sirves devuelve HELP`() = runTest {
         val result = parser.parse("¿Para qué sirves?")
 
         assertEquals(CommandMarkers.HELP, result)
@@ -433,7 +438,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse pregunta sobre la alarma devuelve HELP por la precedencia de la rama ayuda`() {
+    fun `parse pregunta sobre la alarma devuelve HELP por la precedencia de la rama ayuda`() = runTest {
         val result = parser.parse("¿qué puedes hacer con la alarma?")
 
         assertEquals(CommandMarkers.HELP, result)
@@ -441,7 +446,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse piensa que puedes hacerlo devuelve null por el limite posterior de palabra`() {
+    fun `parse piensa que puedes hacerlo devuelve null por el limite posterior de palabra`() = runTest {
         val result = parser.parse("piensa que puedes hacerlo")
 
         assertNull(result)
@@ -449,7 +454,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse se que puedes hacerlo devuelve null por el limite posterior de palabra`() {
+    fun `parse se que puedes hacerlo devuelve null por el limite posterior de palabra`() = runTest {
         val result = parser.parse("se que puedes hacerlo")
 
         assertNull(result)
@@ -459,7 +464,7 @@ class SystemCommandParserTest {
     // ===== Fase A: repite → marcador REPEAT (sin handler) =====
 
     @Test
-    fun `parse repite devuelve REPEAT sin ejecutar ninguna accion`() {
+    fun `parse repite devuelve REPEAT sin ejecutar ninguna accion`() = runTest {
         val result = parser.parse("repite")
 
         assertEquals(CommandMarkers.REPEAT, result)
@@ -467,7 +472,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse otra vez devuelve REPEAT`() {
+    fun `parse otra vez devuelve REPEAT`() = runTest {
         val result = parser.parse("otra vez")
 
         assertEquals(CommandMarkers.REPEAT, result)
@@ -475,17 +480,115 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse repite eso devuelve REPEAT`() {
+    fun `parse repite eso devuelve REPEAT`() = runTest {
         val result = parser.parse("repite eso")
 
         assertEquals(CommandMarkers.REPEAT, result)
         coVerify(exactly = 0) { systemAction.execute(any()) }
     }
 
+    // ===== Fase A: monitoreo continuo → marcadores START/STOP_MONITORING (sin handler) =====
+
+    @Test
+    fun `parse activar monitoreo devuelve START_MONITORING sin ejecutar accion`() = runTest {
+        val result = parser.parse("activar monitoreo")
+
+        assertEquals(CommandMarkers.START_MONITORING, result)
+        coVerify(exactly = 0) { systemAction.execute(any()) }
+    }
+
+    @Test
+    fun `parse iniciar monitoreo devuelve START_MONITORING`() = runTest {
+        val result = parser.parse("iniciar monitoreo")
+
+        assertEquals(CommandMarkers.START_MONITORING, result)
+        coVerify(exactly = 0) { systemAction.execute(any()) }
+    }
+
+    @Test
+    fun `parse encender monitoreo devuelve START_MONITORING`() = runTest {
+        val result = parser.parse("encender monitoreo")
+
+        assertEquals(CommandMarkers.START_MONITORING, result)
+        coVerify(exactly = 0) { systemAction.execute(any()) }
+    }
+
+    @Test
+    fun `parse activar monitoreo por favor devuelve START_MONITORING`() = runTest {
+        val result = parser.parse("activar monitoreo por favor")
+
+        assertEquals(CommandMarkers.START_MONITORING, result)
+        coVerify(exactly = 0) { systemAction.execute(any()) }
+    }
+
+    @Test
+    fun `parse iniciar monitoreo por favor devuelve START_MONITORING`() = runTest {
+        val result = parser.parse("iniciar monitoreo por favor")
+
+        assertEquals(CommandMarkers.START_MONITORING, result)
+        coVerify(exactly = 0) { systemAction.execute(any()) }
+    }
+
+    @Test
+    fun `parse encender monitoreo por favor devuelve START_MONITORING`() = runTest {
+        val result = parser.parse("encender monitoreo por favor")
+
+        assertEquals(CommandMarkers.START_MONITORING, result)
+        coVerify(exactly = 0) { systemAction.execute(any()) }
+    }
+
+    @Test
+    fun `parse detener monitoreo devuelve STOP_MONITORING sin ejecutar accion`() = runTest {
+        val result = parser.parse("detener monitoreo")
+
+        assertEquals(CommandMarkers.STOP_MONITORING, result)
+        coVerify(exactly = 0) { systemAction.execute(any()) }
+    }
+
+    @Test
+    fun `parse parar monitoreo devuelve STOP_MONITORING`() = runTest {
+        val result = parser.parse("parar monitoreo")
+
+        assertEquals(CommandMarkers.STOP_MONITORING, result)
+        coVerify(exactly = 0) { systemAction.execute(any()) }
+    }
+
+    @Test
+    fun `parse apagar monitoreo devuelve STOP_MONITORING`() = runTest {
+        val result = parser.parse("apagar monitoreo")
+
+        assertEquals(CommandMarkers.STOP_MONITORING, result)
+        coVerify(exactly = 0) { systemAction.execute(any()) }
+    }
+
+    @Test
+    fun `parse detener monitoreo por favor devuelve STOP_MONITORING`() = runTest {
+        val result = parser.parse("detener monitoreo por favor")
+
+        assertEquals(CommandMarkers.STOP_MONITORING, result)
+        coVerify(exactly = 0) { systemAction.execute(any()) }
+    }
+
+    @Test
+    fun `parse parar monitoreo por favor devuelve STOP_MONITORING`() = runTest {
+        val result = parser.parse("parar monitoreo por favor")
+
+        assertEquals(CommandMarkers.STOP_MONITORING, result)
+        coVerify(exactly = 0) { systemAction.execute(any()) }
+    }
+
+    @Test
+    fun `parse apagar monitoreo por favor devuelve STOP_MONITORING`() = runTest {
+        val result = parser.parse("apagar monitoreo por favor")
+
+        assertEquals(CommandMarkers.STOP_MONITORING, result)
+        coVerify(exactly = 0) { systemAction.execute(any()) }
+    }
+
     // ===== Fase A: volumen =====
 
     @Test
-    fun `parse sube el volumen ejecuta SetVolume UP`() {
+    fun `parse sube el volumen ejecuta SetVolume UP`() = runTest {
         coEvery { systemAction.execute(SystemCommand.SetVolume(VolumeAction.UP)) } returns
             ActionResult.Success("Volumen subido a 10.")
 
@@ -499,7 +602,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse sube volumen sin articulo ejecuta SetVolume UP`() {
+    fun `parse sube volumen sin articulo ejecuta SetVolume UP`() = runTest {
         coEvery { systemAction.execute(SystemCommand.SetVolume(VolumeAction.UP)) } returns
             ActionResult.Success("Volumen subido a 10.")
 
@@ -510,7 +613,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse baja el volumen ejecuta SetVolume DOWN`() {
+    fun `parse baja el volumen ejecuta SetVolume DOWN`() = runTest {
         coEvery { systemAction.execute(SystemCommand.SetVolume(VolumeAction.DOWN)) } returns
             ActionResult.Success("Volumen bajado a 0.")
 
@@ -521,7 +624,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse silencio ejecuta SetVolume MUTE`() {
+    fun `parse silencio ejecuta SetVolume MUTE`() = runTest {
         coEvery { systemAction.execute(SystemCommand.SetVolume(VolumeAction.MUTE)) } returns
             ActionResult.Success("Teléfono en silencio.")
 
@@ -532,7 +635,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse silencia ejecuta SetVolume MUTE`() {
+    fun `parse silencia ejecuta SetVolume MUTE`() = runTest {
         coEvery { systemAction.execute(SystemCommand.SetVolume(VolumeAction.MUTE)) } returns
             ActionResult.Success("Teléfono en silencio.")
 
@@ -543,7 +646,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse sube el volumen al maximo ejecuta SetVolume MAX`() {
+    fun `parse sube el volumen al maximo ejecuta SetVolume MAX`() = runTest {
         coEvery { systemAction.execute(SystemCommand.SetVolume(VolumeAction.MAX)) } returns
             ActionResult.Success("Volumen al máximo.")
 
@@ -554,7 +657,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse sube el volumen al minimo ejecuta SetVolume MIN`() {
+    fun `parse sube el volumen al minimo ejecuta SetVolume MIN`() = runTest {
         coEvery { systemAction.execute(SystemCommand.SetVolume(VolumeAction.MIN)) } returns
             ActionResult.Success("Volumen al mínimo.")
 
@@ -565,7 +668,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse silencio por favor ejecuta SetVolume MUTE`() {
+    fun `parse silencio por favor ejecuta SetVolume MUTE`() = runTest {
         coEvery { systemAction.execute(SystemCommand.SetVolume(VolumeAction.MUTE)) } returns
             ActionResult.Success("Teléfono en silencio.")
 
@@ -578,7 +681,7 @@ class SystemCommandParserTest {
     // ===== Fase A: idioma =====
 
     @Test
-    fun `parse habla en ingles ejecuta SetLanguage ENGLISH`() {
+    fun `parse habla en ingles ejecuta SetLanguage ENGLISH`() = runTest {
         coEvery { systemAction.execute(SystemCommand.SetLanguage(AssistantLanguage.ENGLISH)) } returns
             ActionResult.Success("Entendido. A partir de ahora hablaré en inglés.")
 
@@ -589,7 +692,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse cambia a espanol ejecuta SetLanguage SPANISH`() {
+    fun `parse cambia a espanol ejecuta SetLanguage SPANISH`() = runTest {
         coEvery { systemAction.execute(SystemCommand.SetLanguage(AssistantLanguage.SPANISH)) } returns
             ActionResult.Success("Entendido. A partir de ahora hablaré en español.")
 
@@ -600,7 +703,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse habla en frances devuelve null por no ser idioma soportado`() {
+    fun `parse habla en frances devuelve null por no ser idioma soportado`() = runTest {
         val result = parser.parse("habla en frances")
 
         assertNull(result)
@@ -610,7 +713,7 @@ class SystemCommandParserTest {
     // ===== Fase B: temporizador =====
 
     @Test
-    fun `parse temporizador de 5 minutos ejecuta SetTimer 5`() {
+    fun `parse temporizador de 5 minutos ejecuta SetTimer 5`() = runTest {
         coEvery { systemAction.execute(SystemCommand.SetTimer(5)) } returns
             ActionResult.Success("Éxito: Temporizador configurado para 5 minutos.")
 
@@ -621,7 +724,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse pasa 2 horas ejecuta SetTimer 120`() {
+    fun `parse pasa 2 horas ejecuta SetTimer 120`() = runTest {
         coEvery { systemAction.execute(SystemCommand.SetTimer(120)) } returns
             ActionResult.Success("Éxito: Temporizador configurado para 120 minutos.")
 
@@ -632,7 +735,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse temporizador de 10 minutos con texto extra ejecuta SetTimer 10`() {
+    fun `parse temporizador de 10 minutos con texto extra ejecuta SetTimer 10`() = runTest {
         coEvery { systemAction.execute(SystemCommand.SetTimer(10)) } returns
             ActionResult.Success("Éxito: Temporizador configurado para 10 minutos.")
 
@@ -643,7 +746,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse busca un temporizador sin duracion delega en busqueda`() {
+    fun `parse busca un temporizador sin duracion delega en busqueda`() = runTest {
         coEvery { systemAction.execute(SystemCommand.SearchGoogle("un temporizador")) } returns
             ActionResult.Success("Buscando un temporizador...")
 
@@ -658,7 +761,7 @@ class SystemCommandParserTest {
     // SystemCommand.TIMER_* (compartida con el wire vía AccionRegistry) =====
 
     @Test
-    fun `parse temporizador de 0 minutos devuelve error y no ejecuta SetTimer`() {
+    fun `parse temporizador de 0 minutos devuelve error y no ejecuta SetTimer`() = runTest {
         val result = parser.parse("pon un temporizador de 0 minutos")
 
         assertEquals("Error: La duración debe estar entre 1 minuto y 24 horas.", result)
@@ -666,7 +769,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse temporizador de 5000 minutos devuelve error y no ejecuta SetTimer`() {
+    fun `parse temporizador de 5000 minutos devuelve error y no ejecuta SetTimer`() = runTest {
         val result = parser.parse("pon un temporizador de 5000 minutos")
 
         assertEquals("Error: La duración debe estar entre 1 minuto y 24 horas.", result)
@@ -674,7 +777,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse temporizador de 1441 minutos devuelve error y no ejecuta SetTimer`() {
+    fun `parse temporizador de 1441 minutos devuelve error y no ejecuta SetTimer`() = runTest {
         val result = parser.parse("pon un temporizador de 1441 minutos")
 
         assertEquals("Error: La duración debe estar entre 1 minuto y 24 horas.", result)
@@ -682,7 +785,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse temporizador de 24 horas ejecuta SetTimer 1440`() {
+    fun `parse temporizador de 24 horas ejecuta SetTimer 1440`() = runTest {
         // Boundary alto VÁLIDO del invariante: 24 horas = 1440 minutos → sí ejecuta.
         coEvery { systemAction.execute(SystemCommand.SetTimer(1440)) } returns
             ActionResult.Success("Éxito: Temporizador configurado para 1440 minutos.")
@@ -694,7 +797,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse temporizador de 1 minuto ejecuta SetTimer 1`() {
+    fun `parse temporizador de 1 minuto ejecuta SetTimer 1`() = runTest {
         // P1-2 (Lote 10): boundary bajo VÁLIDO — lockea el invariante por ambos extremos.
         coEvery { systemAction.execute(SystemCommand.SetTimer(1)) } returns
             ActionResult.Success("Éxito: Temporizador configurado para 1 minutos.")
@@ -706,7 +809,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse temporizador de un rato devuelve null y no ejecuta nada`() {
+    fun `parse temporizador de un rato devuelve null y no ejecuta nada`() = runTest {
         // P2-1 (Lote 10): no-numérico EXPLÍCITO — sin unidad de duración → null (Gemini).
         val result = parser.parse("pon un temporizador de un rato")
 
@@ -717,7 +820,7 @@ class SystemCommandParserTest {
     // ===== O5: duración compuesta (suma de TODAS las unidades + fracciones) =====
 
     @Test
-    fun `parse temporizador de 1 hora y 30 minutos ejecuta SetTimer 90`() {
+    fun `parse temporizador de 1 hora y 30 minutos ejecuta SetTimer 90`() = runTest {
         coEvery { systemAction.execute(SystemCommand.SetTimer(90)) } returns
             ActionResult.Success("Éxito: Temporizador configurado para 90 minutos.")
 
@@ -728,7 +831,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse temporizador de 1 hora 30 minutos sin y ejecuta SetTimer 90`() {
+    fun `parse temporizador de 1 hora 30 minutos sin y ejecuta SetTimer 90`() = runTest {
         coEvery { systemAction.execute(SystemCommand.SetTimer(90)) } returns
             ActionResult.Success("Éxito: Temporizador configurado para 90 minutos.")
 
@@ -739,7 +842,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse temporizador de 30 minutos y 1 hora suma sin importar el orden`() {
+    fun `parse temporizador de 30 minutos y 1 hora suma sin importar el orden`() = runTest {
         coEvery { systemAction.execute(SystemCommand.SetTimer(90)) } returns
             ActionResult.Success("Éxito: Temporizador configurado para 90 minutos.")
 
@@ -750,7 +853,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse pasa 1 hora y media ejecuta SetTimer 90`() {
+    fun `parse pasa 1 hora y media ejecuta SetTimer 90`() = runTest {
         coEvery { systemAction.execute(SystemCommand.SetTimer(90)) } returns
             ActionResult.Success("Éxito: Temporizador configurado para 90 minutos.")
 
@@ -761,7 +864,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse pasa 2 horas y media ejecuta SetTimer 150`() {
+    fun `parse pasa 2 horas y media ejecuta SetTimer 150`() = runTest {
         coEvery { systemAction.execute(SystemCommand.SetTimer(150)) } returns
             ActionResult.Success("Éxito: Temporizador configurado para 150 minutos.")
 
@@ -772,7 +875,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse temporizador de 1 hora y cuarto ejecuta SetTimer 75`() {
+    fun `parse temporizador de 1 hora y cuarto ejecuta SetTimer 75`() = runTest {
         coEvery { systemAction.execute(SystemCommand.SetTimer(75)) } returns
             ActionResult.Success("Éxito: Temporizador configurado para 75 minutos.")
 
@@ -783,7 +886,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse temporizador de 1 hora y 30 minutos y 20 segundos ignora los segundos`() {
+    fun `parse temporizador de 1 hora y 30 minutos y 20 segundos ignora los segundos`() = runTest {
         coEvery { systemAction.execute(SystemCommand.SetTimer(90)) } returns
             ActionResult.Success("Éxito: Temporizador configurado para 90 minutos.")
 
@@ -794,7 +897,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse temporizador de 5 minutos y 10 segundos ejecuta SetTimer 5`() {
+    fun `parse temporizador de 5 minutos y 10 segundos ejecuta SetTimer 5`() = runTest {
         coEvery { systemAction.execute(SystemCommand.SetTimer(5)) } returns
             ActionResult.Success("Éxito: Temporizador configurado para 5 minutos.")
 
@@ -807,7 +910,7 @@ class SystemCommandParserTest {
     // ===== Fase B: llamada directa a número =====
 
     @Test
-    fun `parse llama al 600 123 456 ejecuta CallNumber sin espacios`() {
+    fun `parse llama al 600 123 456 ejecuta CallNumber sin espacios`() = runTest {
         coEvery { systemAction.execute(SystemCommand.CallNumber("600123456")) } returns
             ActionResult.Success("Llamando al 600123456...")
 
@@ -819,7 +922,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse llamar al con prefijo internacional preserva el mas`() {
+    fun `parse llamar al con prefijo internacional preserva el mas`() = runTest {
         coEvery { systemAction.execute(SystemCommand.CallNumber("+34600123456")) } returns
             ActionResult.Success("Llamando al +34600123456...")
 
@@ -831,7 +934,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse llama al jefe ejecuta Call con el contacto`() {
+    fun `parse llama al jefe ejecuta Call con el contacto`() = runTest {
         coEvery { systemAction.execute(SystemCommand.Call("jefe")) } returns
             ActionResult.Success("Llamando a jefe...")
 
@@ -843,7 +946,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse llama a 600 123 456 ejecuta CallNumber y no Call`() {
+    fun `parse llama a 600 123 456 ejecuta CallNumber y no Call`() = runTest {
         coEvery { systemAction.execute(SystemCommand.CallNumber("600123456")) } returns
             ActionResult.Success("Llamando al 600123456...")
 
@@ -855,7 +958,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse llama a 600123456 compacto ejecuta CallNumber`() {
+    fun `parse llama a 600123456 compacto ejecuta CallNumber`() = runTest {
         coEvery { systemAction.execute(SystemCommand.CallNumber("600123456")) } returns
             ActionResult.Success("Llamando al 600123456...")
 
@@ -866,7 +969,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse LLAMA AL 600123456 en mayusculas ejecuta CallNumber`() {
+    fun `parse LLAMA AL 600123456 en mayusculas ejecuta CallNumber`() = runTest {
         coEvery { systemAction.execute(SystemCommand.CallNumber("600123456")) } returns
             ActionResult.Success("Llamando al 600123456...")
 
@@ -880,7 +983,7 @@ class SystemCommandParserTest {
     // ===== H4: números con puntos separadores =====
 
     @Test
-    fun `parse llama al 600 123 456 con puntos ejecuta CallNumber sin puntos`() {
+    fun `parse llama al 600 123 456 con puntos ejecuta CallNumber sin puntos`() = runTest {
         coEvery { systemAction.execute(SystemCommand.CallNumber("600123456")) } returns
             ActionResult.Success("Llamando al 600123456...")
 
@@ -893,7 +996,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse llama al 600 ejecuta CallNumber`() {
+    fun `parse llama al 600 ejecuta CallNumber`() = runTest {
         coEvery { systemAction.execute(SystemCommand.CallNumber("600")) } returns
             ActionResult.Success("Llamando al 600...")
 
@@ -905,7 +1008,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse llamar al 600 123 456 con guiones ejecuta CallNumber sin guiones`() {
+    fun `parse llamar al 600 123 456 con guiones ejecuta CallNumber sin guiones`() = runTest {
         coEvery { systemAction.execute(SystemCommand.CallNumber("600123456")) } returns
             ActionResult.Success("Llamando al 600123456...")
 
@@ -919,7 +1022,7 @@ class SystemCommandParserTest {
     // ===== M2 (Lote 10): sufijo de cortesía del dictado ("por favor") en llamadas =====
 
     @Test
-    fun `parse llama a 600 123 456 por favor ejecuta CallNumber y no Call`() {
+    fun `parse llama a 600 123 456 por favor ejecuta CallNumber y no Call`() = runTest {
         coEvery { systemAction.execute(SystemCommand.CallNumber("600123456")) } returns
             ActionResult.Success("Llamando al 600123456...")
 
@@ -932,7 +1035,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse llama a 600 123 456 porfavor ejecuta CallNumber`() {
+    fun `parse llama a 600 123 456 porfavor ejecuta CallNumber`() = runTest {
         // P1-1 (Lote 10): variante de dictado SIN espacio ("porfavor").
         coEvery { systemAction.execute(SystemCommand.CallNumber("600123456")) } returns
             ActionResult.Success("Llamando al 600123456...")
@@ -945,7 +1048,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse llama a Ana por favor ejecuta Call con el contacto`() {
+    fun `parse llama a Ana por favor ejecuta Call con el contacto`() = runTest {
         coEvery { systemAction.execute(SystemCommand.Call("Ana")) } returns
             ActionResult.Success("Llamando a Ana...")
 
@@ -957,7 +1060,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse llama al jefe por favor ejecuta Call con el contacto`() {
+    fun `parse llama al jefe por favor ejecuta Call con el contacto`() = runTest {
         coEvery { systemAction.execute(SystemCommand.Call("jefe")) } returns
             ActionResult.Success("Llamando a jefe...")
 
@@ -969,7 +1072,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse llama a por favor devuelve error y no ejecuta nada`() {
+    fun `parse llama a por favor devuelve error y no ejecuta nada`() = runTest {
         // M2: tras el strip del cortesía no queda target → error SIN ejecutar
         // (antes emitía Call("por favor"), contacto basura).
         val result = parser.parse("llama a por favor")
@@ -981,7 +1084,7 @@ class SystemCommandParserTest {
     // ===== Fase B: recuerda (memoria offline) =====
 
     @Test
-    fun `parse recuerda que me gusta el cafe ejecuta SaveMemory con el hecho`() {
+    fun `parse recuerda que me gusta el cafe ejecuta SaveMemory con el hecho`() = runTest {
         coEvery { systemAction.execute(SystemCommand.SaveMemory("me gusta el cafe")) } returns
             ActionResult.Success("Entendido, lo recordaré.")
 
@@ -992,7 +1095,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse recuerda comprar leche ejecuta SaveMemory sin el que`() {
+    fun `parse recuerda comprar leche ejecuta SaveMemory sin el que`() = runTest {
         coEvery { systemAction.execute(SystemCommand.SaveMemory("comprar leche")) } returns
             ActionResult.Success("Entendido, lo recordaré.")
 
@@ -1005,7 +1108,7 @@ class SystemCommandParserTest {
     // ===== Fase B: navegación Maps =====
 
     @Test
-    fun `parse llevame a la oficina ejecuta Navigate con el destino`() {
+    fun `parse llevame a la oficina ejecuta Navigate con el destino`() = runTest {
         coEvery { systemAction.execute(SystemCommand.Navigate("la oficina")) } returns
             ActionResult.Success("Éxito: Abriendo Maps hacia la oficina.")
 
@@ -1016,7 +1119,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse navega a la gasolinera ejecuta Navigate con el destino`() {
+    fun `parse navega a la gasolinera ejecuta Navigate con el destino`() = runTest {
         coEvery { systemAction.execute(SystemCommand.Navigate("la gasolinera")) } returns
             ActionResult.Success("Éxito: Abriendo Maps hacia la gasolinera.")
 
@@ -1027,7 +1130,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse LLEVAME a la playa ejecuta Navigate preservando el case`() {
+    fun `parse LLEVAME a la playa ejecuta Navigate preservando el case`() = runTest {
         coEvery { systemAction.execute(SystemCommand.Navigate("la playa")) } returns
             ActionResult.Success("Éxito: Abriendo Maps hacia la playa.")
 
@@ -1040,7 +1143,7 @@ class SystemCommandParserTest {
     // ===== Fase B: ajustes =====
 
     @Test
-    fun `parse abre los ajustes ejecuta OpenSettings y no OpenApp`() {
+    fun `parse abre los ajustes ejecuta OpenSettings y no OpenApp`() = runTest {
         coEvery { systemAction.execute(SystemCommand.OpenSettings) } returns
             ActionResult.Success("Éxito: Abriendo ajustes del sistema.")
 
@@ -1052,7 +1155,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse abre la configuracion ejecuta OpenSettings`() {
+    fun `parse abre la configuracion ejecuta OpenSettings`() = runTest {
         coEvery { systemAction.execute(SystemCommand.OpenSettings) } returns
             ActionResult.Success("Éxito: Abriendo ajustes del sistema.")
 
@@ -1064,7 +1167,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse abrir los ajustes ejecuta OpenSettings`() {
+    fun `parse abrir los ajustes ejecuta OpenSettings`() = runTest {
         coEvery { systemAction.execute(SystemCommand.OpenSettings) } returns
             ActionResult.Success("Éxito: Abriendo ajustes del sistema.")
 
@@ -1076,7 +1179,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse abre ajustes sin articulo ejecuta OpenSettings`() {
+    fun `parse abre ajustes sin articulo ejecuta OpenSettings`() = runTest {
         coEvery { systemAction.execute(SystemCommand.OpenSettings) } returns
             ActionResult.Success("Éxito: Abriendo ajustes del sistema.")
 
@@ -1088,7 +1191,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse abre configuracion sin articulo ejecuta OpenSettings`() {
+    fun `parse abre configuracion sin articulo ejecuta OpenSettings`() = runTest {
         coEvery { systemAction.execute(SystemCommand.OpenSettings) } returns
             ActionResult.Success("Éxito: Abriendo ajustes del sistema.")
 
@@ -1100,7 +1203,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse abrir la configuracion ejecuta OpenSettings`() {
+    fun `parse abrir la configuracion ejecuta OpenSettings`() = runTest {
         coEvery { systemAction.execute(SystemCommand.OpenSettings) } returns
             ActionResult.Success("Éxito: Abriendo ajustes del sistema.")
 
@@ -1114,7 +1217,7 @@ class SystemCommandParserTest {
     // ===== Fase B: alarma con hora hablada =====
 
     @Test
-    fun `parse alarma con hora palabra y etiqueta ejecuta SetAlarm con la etiqueta`() {
+    fun `parse alarma con hora palabra y etiqueta ejecuta SetAlarm con la etiqueta`() = runTest {
         coEvery { systemAction.execute(SystemCommand.SetAlarm(7, 30, "despertarme")) } returns
             ActionResult.Success("Alarma a las 7:30.")
 
@@ -1125,7 +1228,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse alarma a las 19 45 ejecuta SetAlarm 19 45`() {
+    fun `parse alarma a las 19 45 ejecuta SetAlarm 19 45`() = runTest {
         coEvery { systemAction.execute(SystemCommand.SetAlarm(19, 45, null)) } returns
             ActionResult.Success("Alarma a las 19:45.")
 
@@ -1136,7 +1239,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse alarma a las 7 30 de la tarde ejecuta SetAlarm 19 30`() {
+    fun `parse alarma a las 7 30 de la tarde ejecuta SetAlarm 19 30`() = runTest {
         coEvery { systemAction.execute(SystemCommand.SetAlarm(19, 30, null)) } returns
             ActionResult.Success("Alarma a las 19:30.")
 
@@ -1147,7 +1250,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse alarma para las siete ejecuta SetAlarm 7 00`() {
+    fun `parse alarma para las siete ejecuta SetAlarm 7 00`() = runTest {
         coEvery { systemAction.execute(SystemCommand.SetAlarm(7, 0, null)) } returns
             ActionResult.Success("Alarma a las 7:00.")
 
@@ -1158,7 +1261,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse alarma sin hora ejecuta OpenAlarms`() {
+    fun `parse alarma sin hora ejecuta OpenAlarms`() = runTest {
         coEvery { systemAction.execute(SystemCommand.OpenAlarms) } returns
             ActionResult.Success("Abriendo alarmas...")
 
@@ -1175,7 +1278,7 @@ class SystemCommandParserTest {
     // sobre el subtexto posterior a "alarma" (mismo patrón que la rama 11b).
 
     @Test
-    fun `parse pon la alarma a las 7 ejecuta SetAlarm 7 0 y no OpenAlarms`() {
+    fun `parse pon la alarma a las 7 ejecuta SetAlarm 7 0 y no OpenAlarms`() = runTest {
         coEvery { systemAction.execute(SystemCommand.SetAlarm(7, 0, null)) } returns
             ActionResult.Success("Alarma a las 7:00.")
 
@@ -1188,7 +1291,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse la alarma de las 7 30 ejecuta SetAlarm 7 30`() {
+    fun `parse la alarma de las 7 30 ejecuta SetAlarm 7 30`() = runTest {
         coEvery { systemAction.execute(SystemCommand.SetAlarm(7, 30, null)) } returns
             ActionResult.Success("Alarma a las 7:30.")
 
@@ -1200,7 +1303,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse activa la alarma a las 7 30 ejecuta SetAlarm 7 30`() {
+    fun `parse activa la alarma a las 7 30 ejecuta SetAlarm 7 30`() = runTest {
         coEvery { systemAction.execute(SystemCommand.SetAlarm(7, 30, null)) } returns
             ActionResult.Success("Alarma a las 7:30.")
 
@@ -1212,7 +1315,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse pon la alarma para las 8 ejecuta SetAlarm 8 0 sin etiqueta`() {
+    fun `parse pon la alarma para las 8 ejecuta SetAlarm 8 0 sin etiqueta`() = runTest {
         coEvery { systemAction.execute(SystemCommand.SetAlarm(8, 0, null)) } returns
             ActionResult.Success("Alarma a las 8:00.")
 
@@ -1226,7 +1329,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse pon una alarma para las 7 30 para despertarme ejecuta SetAlarm 7 30 con etiqueta`() {
+    fun `parse pon una alarma para las 7 30 para despertarme ejecuta SetAlarm 7 30 con etiqueta`() = runTest {
         coEvery { systemAction.execute(SystemCommand.SetAlarm(7, 30, "despertarme")) } returns
             ActionResult.Success("Alarma a las 7:30.")
 
@@ -1240,7 +1343,7 @@ class SystemCommandParserTest {
     // ===== O4: cancelar alarma (rama 11b, precedencia sobre la rama alarma) =====
 
     @Test
-    fun `parse cancela la alarma de las 7 ejecuta CancelAlarm 7 0 y no SetAlarm`() {
+    fun `parse cancela la alarma de las 7 ejecuta CancelAlarm 7 0 y no SetAlarm`() = runTest {
         coEvery { systemAction.execute(SystemCommand.CancelAlarm(7, 0)) } returns
             ActionResult.Success("He abierto la lista de alarmas: desliza para borrar la de las 7:0.")
 
@@ -1253,7 +1356,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse cancela la alarma de las siete de la noche ejecuta CancelAlarm 19 0`() {
+    fun `parse cancela la alarma de las siete de la noche ejecuta CancelAlarm 19 0`() = runTest {
         coEvery { systemAction.execute(SystemCommand.CancelAlarm(19, 0)) } returns
             ActionResult.Success("He abierto la lista de alarmas: desliza para borrar la de las 19:0.")
 
@@ -1264,7 +1367,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse cancela la alarma sin hora ejecuta CancelAlarm sin parametros`() {
+    fun `parse cancela la alarma sin hora ejecuta CancelAlarm sin parametros`() = runTest {
         coEvery { systemAction.execute(SystemCommand.CancelAlarm(null, null)) } returns
             ActionResult.Success("He abierto la lista de alarmas: desliza para borrar la que quieras.")
 
@@ -1276,7 +1379,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse cancela las alarmas de las 7 ejecuta CancelAlarm 7 0 con el plural`() {
+    fun `parse cancela las alarmas de las 7 ejecuta CancelAlarm 7 0 con el plural`() = runTest {
         coEvery { systemAction.execute(SystemCommand.CancelAlarm(7, 0)) } returns
             ActionResult.Success("He abierto la lista de alarmas: desliza para borrar la de las 7:0.")
 
@@ -1287,7 +1390,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse pregunta de cancelar alarma con signos ejecuta CancelAlarm sin hora`() {
+    fun `parse pregunta de cancelar alarma con signos ejecuta CancelAlarm sin hora`() = runTest {
         coEvery { systemAction.execute(SystemCommand.CancelAlarm(null, null)) } returns
             ActionResult.Success("He abierto la lista de alarmas: desliza para borrar la que quieras.")
 
@@ -1299,7 +1402,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse quita la alarma ejecuta CancelAlarm sin parametros`() {
+    fun `parse quita la alarma ejecuta CancelAlarm sin parametros`() = runTest {
         coEvery { systemAction.execute(SystemCommand.CancelAlarm(null, null)) } returns
             ActionResult.Success("He abierto la lista de alarmas: desliza para borrar la que quieras.")
 
@@ -1310,7 +1413,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse elimina las alarmas ejecuta CancelAlarm sin parametros`() {
+    fun `parse elimina las alarmas ejecuta CancelAlarm sin parametros`() = runTest {
         coEvery { systemAction.execute(SystemCommand.CancelAlarm(null, null)) } returns
             ActionResult.Success("He abierto la lista de alarmas: desliza para borrar la que quieras.")
 
@@ -1321,7 +1424,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse cancela mi alarma de las 7 ejecuta CancelAlarm 7 0`() {
+    fun `parse cancela mi alarma de las 7 ejecuta CancelAlarm 7 0`() = runTest {
         coEvery { systemAction.execute(SystemCommand.CancelAlarm(7, 0)) } returns
             ActionResult.Success("He abierto la lista de alarmas: desliza para borrar la de las 7:0.")
 
@@ -1332,7 +1435,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse quita el volumen devuelve null`() {
+    fun `parse quita el volumen devuelve null`() = runTest {
         // "quita" + "el volumen": el sustantivo de cancelAlarmRegex no matchea → Gemini.
         val result = parser.parse("quita el volumen")
 
@@ -1341,7 +1444,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse cancela el temporizador devuelve null`() {
+    fun `parse cancela el temporizador devuelve null`() = runTest {
         val result = parser.parse("cancela el temporizador")
 
         assertNull(result)
@@ -1351,7 +1454,7 @@ class SystemCommandParserTest {
     // ===== Fallbacks: texto que parece hora pero no lo es =====
 
     @Test
-    fun `parse sala 4 devuelve null por el word boundary de la`() {
+    fun `parse sala 4 devuelve null por el word boundary de la`() = runTest {
         val result = parser.parse("sala 4")
 
         assertNull(result)
@@ -1359,7 +1462,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse veinticinco suelto devuelve null`() {
+    fun `parse veinticinco suelto devuelve null`() = runTest {
         val result = parser.parse("veinticinco")
 
         assertNull(result)
@@ -1371,7 +1474,7 @@ class SystemCommandParserTest {
     // Grupo A: extracción
 
     @Test
-    fun `parse crea una nota con dos puntos extrae el texto y ejecuta CreateNote`() {
+    fun `parse crea una nota con dos puntos extrae el texto y ejecuta CreateNote`() = runTest {
         coEvery { systemAction.execute(SystemCommand.CreateNote("comprar leche")) } returns
             ActionResult.Success("Nota guardada. Empieza así: «comprar leche»")
 
@@ -1382,7 +1485,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse crea una nota con espacio extrae el texto sin el prefijo`() {
+    fun `parse crea una nota con espacio extrae el texto sin el prefijo`() = runTest {
         coEvery { systemAction.execute(SystemCommand.CreateNote("comprar leche")) } returns
             ActionResult.Success("Nota guardada. Empieza así: «comprar leche»")
 
@@ -1393,7 +1496,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse crear una nota con dos puntos extrae el texto`() {
+    fun `parse crear una nota con dos puntos extrae el texto`() = runTest {
         coEvery { systemAction.execute(SystemCommand.CreateNote("llamar al fontanero")) } returns
             ActionResult.Success("Nota guardada. Empieza así: «llamar al fontanero»")
 
@@ -1404,7 +1507,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse anota con dos puntos preserva las tildes del texto`() {
+    fun `parse anota con dos puntos preserva las tildes del texto`() = runTest {
         coEvery { systemAction.execute(SystemCommand.CreateNote("reunión con el médico a las 3")) } returns
             ActionResult.Success("Nota guardada. Empieza así: «reunión con el médico a las 3»")
 
@@ -1415,7 +1518,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse ANOTA en mayusculas extrae el texto preservando el case`() {
+    fun `parse ANOTA en mayusculas extrae el texto preservando el case`() = runTest {
         coEvery { systemAction.execute(SystemCommand.CreateNote("comprar leche")) } returns
             ActionResult.Success("Nota guardada. Empieza así: «comprar leche»")
 
@@ -1426,7 +1529,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse toma nota de extrae el texto completo`() {
+    fun `parse toma nota de extrae el texto completo`() = runTest {
         coEvery { systemAction.execute(SystemCommand.CreateNote("la reunión de mañana")) } returns
             ActionResult.Success("Nota guardada. Empieza así: «la reunión de mañana»")
 
@@ -1437,7 +1540,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse toma nota del extrae el texto sin la contraccion`() {
+    fun `parse toma nota del extrae el texto sin la contraccion`() = runTest {
         coEvery { systemAction.execute(SystemCommand.CreateNote("pan")) } returns
             ActionResult.Success("Nota guardada. Empieza así: «pan»")
 
@@ -1448,7 +1551,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse crea una nota del extrae el texto sin la contraccion`() {
+    fun `parse crea una nota del extrae el texto sin la contraccion`() = runTest {
         coEvery { systemAction.execute(SystemCommand.CreateNote("proyecto")) } returns
             ActionResult.Success("Nota guardada. Empieza así: «proyecto»")
 
@@ -1459,7 +1562,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse toma nota del sin argumento devuelve null`() {
+    fun `parse toma nota del sin argumento devuelve null`() = runTest {
         val result = parser.parse("toma nota del")
 
         assertNull(result)
@@ -1467,7 +1570,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse toma nota con dos puntos extrae el texto`() {
+    fun `parse toma nota con dos puntos extrae el texto`() = runTest {
         coEvery { systemAction.execute(SystemCommand.CreateNote("comprar pan y leche")) } returns
             ActionResult.Success("Nota guardada. Empieza así: «comprar pan y leche»")
 
@@ -1478,7 +1581,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse escribe una nota con dos puntos extrae el texto`() {
+    fun `parse escribe una nota con dos puntos extrae el texto`() = runTest {
         coEvery { systemAction.execute(SystemCommand.CreateNote("idea para la app")) } returns
             ActionResult.Success("Nota guardada. Empieza así: «idea para la app»")
 
@@ -1489,7 +1592,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse escribir una nota extrae el texto`() {
+    fun `parse escribir una nota extrae el texto`() = runTest {
         coEvery { systemAction.execute(SystemCommand.CreateNote("sobre el proyecto")) } returns
             ActionResult.Success("Nota guardada. Empieza así: «sobre el proyecto»")
 
@@ -1500,7 +1603,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse tomar nota de extrae el texto`() {
+    fun `parse tomar nota de extrae el texto`() = runTest {
         coEvery { systemAction.execute(SystemCommand.CreateNote("que la wifi no funciona")) } returns
             ActionResult.Success("Nota guardada. Empieza así: «que la wifi no funciona»")
 
@@ -1511,7 +1614,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse crea una nota con punto tras el prefijo extrae el texto`() {
+    fun `parse crea una nota con punto tras el prefijo extrae el texto`() = runTest {
         coEvery { systemAction.execute(SystemCommand.CreateNote("comprar leche")) } returns
             ActionResult.Success("Nota guardada. Empieza así: «comprar leche»")
 
@@ -1522,7 +1625,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse anota con dos puntos internos preserva los dos puntos`() {
+    fun `parse anota con dos puntos internos preserva los dos puntos`() = runTest {
         coEvery { systemAction.execute(SystemCommand.CreateNote("comprar: leche y pan")) } returns
             ActionResult.Success("Nota guardada. Empieza así: «comprar: leche y pan»")
 
@@ -1533,7 +1636,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse con signos de apertura y cierre extrae la nota limpia`() {
+    fun `parse con signos de apertura y cierre extrae la nota limpia`() = runTest {
         coEvery { systemAction.execute(SystemCommand.CreateNote("pan")) } returns
             ActionResult.Success("Nota guardada. Empieza así: «pan»")
 
@@ -1547,7 +1650,7 @@ class SystemCommandParserTest {
     // Grupo B: precedencia sobre ayuda / alarma / temporizador / búsqueda
 
     @Test
-    fun `parse crea una nota con frase de ayuda no devuelve HELP`() {
+    fun `parse crea una nota con frase de ayuda no devuelve HELP`() = runTest {
         coEvery { systemAction.execute(SystemCommand.CreateNote("que puedes hacer")) } returns
             ActionResult.Success("Nota guardada. Empieza así: «que puedes hacer»")
 
@@ -1559,7 +1662,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse crea una nota con alarma no ejecuta la rama alarma`() {
+    fun `parse crea una nota con alarma no ejecuta la rama alarma`() = runTest {
         coEvery { systemAction.execute(SystemCommand.CreateNote("pon una alarma a las 7")) } returns
             ActionResult.Success("Nota guardada. Empieza así: «pon una alarma a las 7»")
 
@@ -1571,7 +1674,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse anota con temporizador no ejecuta la rama temporizador`() {
+    fun `parse anota con temporizador no ejecuta la rama temporizador`() = runTest {
         coEvery { systemAction.execute(SystemCommand.CreateNote("pon un temporizador de 5 minutos")) } returns
             ActionResult.Success("Nota guardada. Empieza así: «pon un temporizador de 5 minutos»")
 
@@ -1583,7 +1686,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse crea una nota con busqueda no ejecuta la rama busqueda`() {
+    fun `parse crea una nota con busqueda no ejecuta la rama busqueda`() = runTest {
         coEvery { systemAction.execute(SystemCommand.CreateNote("busca gatos")) } returns
             ActionResult.Success("Nota guardada. Empieza así: «busca gatos»")
 
@@ -1597,7 +1700,7 @@ class SystemCommandParserTest {
     // Grupo C: falsos positivos (→ null, fall-through a Gemini)
 
     @Test
-    fun `parse anotar los gastos devuelve null por no ser prefijo de nota`() {
+    fun `parse anotar los gastos devuelve null por no ser prefijo de nota`() = runTest {
         val result = parser.parse("anotar los gastos")
 
         assertNull(result)
@@ -1605,7 +1708,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse tengo una nota pendiente devuelve null`() {
+    fun `parse tengo una nota pendiente devuelve null`() = runTest {
         val result = parser.parse("tengo una nota pendiente")
 
         assertNull(result)
@@ -1613,7 +1716,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse nota suelto devuelve null`() {
+    fun `parse nota suelto devuelve null`() = runTest {
         val result = parser.parse("nota")
 
         assertNull(result)
@@ -1621,7 +1724,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse toma nota sin contenido devuelve null`() {
+    fun `parse toma nota sin contenido devuelve null`() = runTest {
         val result = parser.parse("toma nota")
 
         assertNull(result)
@@ -1629,7 +1732,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse crea una nota sin contenido devuelve null`() {
+    fun `parse crea una nota sin contenido devuelve null`() = runTest {
         val result = parser.parse("crea una nota")
 
         assertNull(result)
@@ -1637,7 +1740,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse toma nota de sin argumento devuelve null`() {
+    fun `parse toma nota de sin argumento devuelve null`() = runTest {
         val result = parser.parse("toma nota de")
 
         assertNull(result)
@@ -1647,7 +1750,7 @@ class SystemCommandParserTest {
     // Grupo D: el parser NO trunca (el límite lo aplica la acción)
 
     @Test
-    fun `parse nota de 1200 caracteres no trunca el texto`() {
+    fun `parse nota de 1200 caracteres no trunca el texto`() = runTest {
         val longText = "a".repeat(1200)
         coEvery { systemAction.execute(SystemCommand.CreateNote(longText)) } returns
             ActionResult.Success("Nota guardada. Empieza así: «${longText.take(80)}...»")
@@ -1661,7 +1764,7 @@ class SystemCommandParserTest {
     // ===== N-OBS2: variantes "de:" (dos puntos tras preposición) =====
 
     @Test
-    fun `parse crea una nota de con dos puntos extrae el texto`() {
+    fun `parse crea una nota de con dos puntos extrae el texto`() = runTest {
         coEvery { systemAction.execute(SystemCommand.CreateNote("pan")) } returns
             ActionResult.Success("Nota guardada. Empieza así: «pan»")
 
@@ -1672,7 +1775,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse toma nota de con dos puntos extrae el texto`() {
+    fun `parse toma nota de con dos puntos extrae el texto`() = runTest {
         coEvery { systemAction.execute(SystemCommand.CreateNote("pan")) } returns
             ActionResult.Success("Nota guardada. Empieza así: «pan»")
 
@@ -1683,7 +1786,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse crear una nota de con dos puntos extrae el texto`() {
+    fun `parse crear una nota de con dos puntos extrae el texto`() = runTest {
         coEvery { systemAction.execute(SystemCommand.CreateNote("pan")) } returns
             ActionResult.Success("Nota guardada. Empieza así: «pan»")
 
@@ -1694,7 +1797,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse escribir una nota de con dos puntos extrae el texto`() {
+    fun `parse escribir una nota de con dos puntos extrae el texto`() = runTest {
         coEvery { systemAction.execute(SystemCommand.CreateNote("pan")) } returns
             ActionResult.Success("Nota guardada. Empieza así: «pan»")
 
@@ -1705,7 +1808,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse crea una nota de la lista sigue extrayendo sin cambio`() {
+    fun `parse crea una nota de la lista sigue extrayendo sin cambio`() = runTest {
         // Regresión: la variante "de:" no debe alterar el comportamiento de "de "
         coEvery { systemAction.execute(SystemCommand.CreateNote("la lista")) } returns
             ActionResult.Success("Nota guardada. Empieza así: «la lista»")
@@ -1717,7 +1820,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse crea una nota de con dos puntos sin contenido devuelve null`() {
+    fun `parse crea una nota de con dos puntos sin contenido devuelve null`() = runTest {
         // Guard vacío: "de:" colgante no es contenido real → Gemini
         val result = parser.parse("crea una nota de:")
 
@@ -1726,7 +1829,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse crea una nota del con dos puntos devuelve null por no ser soportado`() {
+    fun `parse crea una nota del con dos puntos devuelve null por no ser soportado`() = runTest {
         // No-goal: "del:" no está en los prefijos → Gemini
         val result = parser.parse("crea una nota del: pan")
 
@@ -1735,7 +1838,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse crea una nota de con dos puntos y frase de ayuda no devuelve HELP`() {
+    fun `parse crea una nota de con dos puntos y frase de ayuda no devuelve HELP`() = runTest {
         // Precedencia de la rama 0 sobre la 1: el contenido "que puedes hacer" es una nota
         coEvery { systemAction.execute(SystemCommand.CreateNote("que puedes hacer")) } returns
             ActionResult.Success("Nota guardada. Empieza así: «que puedes hacer»")
@@ -1749,7 +1852,7 @@ class SystemCommandParserTest {
     // ===== N1: lectura de notas (rama 0b) =====
 
     @Test
-    fun `parse lee mis notas ejecuta ReadNotes`() {
+    fun `parse lee mis notas ejecuta ReadNotes`() = runTest {
         coEvery { systemAction.execute(SystemCommand.ReadNotes) } returns
             ActionResult.Success("Éxito: Tienes 2 notas. La más reciente empieza así: «comprar leche»")
 
@@ -1760,7 +1863,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse lee mis notas con dos puntos finales ejecuta ReadNotes`() {
+    fun `parse lee mis notas con dos puntos finales ejecuta ReadNotes`() = runTest {
         // El ':' final se acepta como separador de comando (H5/ADR-011)
         coEvery { systemAction.execute(SystemCommand.ReadNotes) } returns
             ActionResult.Success("Éxito: Tienes 1 nota. Empieza así: «pan»")
@@ -1772,7 +1875,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse lee mis notas de la semana devuelve null`() {
+    fun `parse lee mis notas de la semana devuelve null`() = runTest {
         // BLOQUEANTE resuelto: igualdad EXACTA — la expansión NO debe capturarse
         // (el lookahead (?=\s|:|$) de la rama 1 no aplica aquí: el espacio lo atraviesa)
         val result = parser.parse("lee mis notas de la semana")
@@ -1782,7 +1885,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse lee mis notas con espacio final ejecuta ReadNotes`() {
+    fun `parse lee mis notas con espacio final ejecuta ReadNotes`() = runTest {
         // Ronda de cierre (estilo O6): el trim de parse elimina el trailing space →
         // trimmed = "lee mis notas" → igualdad exacta (el helper añade además el
         // espacio inicial, cubriendo ambos bordes).
@@ -1790,14 +1893,14 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse lee mis notas con punto final ejecuta ReadNotes`() {
+    fun `parse lee mis notas con punto final ejecuta ReadNotes`() = runTest {
         // Ronda de cierre (estilo O6): normalize convierte el '.' final en espacio y
         // trim() lo elimina → trimmed = "lee mis notas" → igualdad exacta.
         assertCommandWithLeadingSpace("lee mis notas.", SystemCommand.ReadNotes)
     }
 
     @Test
-    fun `parse lee mis notas con dos puntos y expansion devuelve null`() {
+    fun `parse lee mis notas con dos puntos y expansion devuelve null`() = runTest {
         // Ronda de cierre: "lee mis notas: de la semana" NO es ReadNotes — el ':' no se
         // normaliza (queda excluido de normalize) y el texto tras él rompe la igualdad
         // exacta → Gemini. Tampoco es ReadNote (ningún prefijo "lee la nota" matchea).
@@ -1808,7 +1911,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse lee la nota de pan ejecuta ReadNote pan`() {
+    fun `parse lee la nota de pan ejecuta ReadNote pan`() = runTest {
         coEvery { systemAction.execute(SystemCommand.ReadNote("pan")) } returns
             ActionResult.Success("Éxito: La nota dice: «comprar pan»")
 
@@ -1819,7 +1922,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse lee la nota de con dos puntos ejecuta ReadNote pan`() {
+    fun `parse lee la nota de con dos puntos ejecuta ReadNote pan`() = runTest {
         coEvery { systemAction.execute(SystemCommand.ReadNote("pan")) } returns
             ActionResult.Success("Éxito: La nota dice: «pan»")
 
@@ -1830,7 +1933,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse lee la nota del ejecuta ReadNote sin la contraccion`() {
+    fun `parse lee la nota del ejecuta ReadNote sin la contraccion`() = runTest {
         coEvery { systemAction.execute(SystemCommand.ReadNote("proyecto")) } returns
             ActionResult.Success("Éxito: La nota dice: «proyecto»")
 
@@ -1841,7 +1944,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse lee la nota con dos puntos ejecuta ReadNote`() {
+    fun `parse lee la nota con dos puntos ejecuta ReadNote`() = runTest {
         coEvery { systemAction.execute(SystemCommand.ReadNote("comprar leche")) } returns
             ActionResult.Success("Éxito: La nota dice: «comprar leche»")
 
@@ -1852,7 +1955,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse lee la nota con dos puntos pegado ejecuta ReadNote`() {
+    fun `parse lee la nota con dos puntos pegado ejecuta ReadNote`() = runTest {
         coEvery { systemAction.execute(SystemCommand.ReadNote("pan")) } returns
             ActionResult.Success("Éxito: La nota dice: «pan»")
 
@@ -1863,7 +1966,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse lee la nota de la alarma de las 7 no ejecuta la rama alarma`() {
+    fun `parse lee la nota de la alarma de las 7 no ejecuta la rama alarma`() = runTest {
         // Precedencia de la rama 0b sobre la 12 (contains): es una búsqueda de nota
         coEvery { systemAction.execute(SystemCommand.ReadNote("la alarma de las 7")) } returns
             ActionResult.Success("Éxito: La nota dice: «pon una alarma a las 7»")
@@ -1878,7 +1981,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse lee la nota desnudo devuelve null`() {
+    fun `parse lee la nota desnudo devuelve null`() = runTest {
         // "lee la nota" sin más NO está en los prefijos → Gemini
         val result = parser.parse("lee la nota")
 
@@ -1887,7 +1990,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse lee la nota de con dos puntos sin contenido devuelve null`() {
+    fun `parse lee la nota de con dos puntos sin contenido devuelve null`() = runTest {
         // Colgante "de:" → no es una búsqueda real → Gemini
         val result = parser.parse("lee la nota de:")
 
@@ -1896,7 +1999,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse lee la nota del con dos puntos devuelve null por no ser soportado`() {
+    fun `parse lee la nota del con dos puntos devuelve null por no ser soportado`() = runTest {
         // No-goal simétrico a "crea una nota del: pan" (N-OBS2): la contracción "del:"
         // no es un prefijo ni un colgante real → el guard lo rechaza → Gemini
         val result = parser.parse("lee la nota del: pan")
@@ -1906,7 +2009,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse lee la nota con frase de ayuda no devuelve HELP`() {
+    fun `parse lee la nota con frase de ayuda no devuelve HELP`() = runTest {
         // Precedencia de la rama 0b sobre la 1: la query es contenido de búsqueda
         coEvery { systemAction.execute(SystemCommand.ReadNote("que puedes hacer")) } returns
             ActionResult.Success("Éxito: La nota dice: «que puedes hacer»")
@@ -1920,7 +2023,7 @@ class SystemCommandParserTest {
     // ===== TMP-2: dígito desnudo tras "X hora(s)/minuto(s) y N" (ADR-TMP-5) =====
 
     @Test
-    fun `parse temporizador de 1 hora y 30 sin unidad ejecuta SetTimer 90`() {
+    fun `parse temporizador de 1 hora y 30 sin unidad ejecuta SetTimer 90`() = runTest {
         coEvery { systemAction.execute(SystemCommand.SetTimer(90)) } returns
             ActionResult.Success("Éxito: Temporizador configurado para 90 minutos.")
 
@@ -1931,7 +2034,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse temporizador de 1 hora y 1 ejecuta SetTimer 61`() {
+    fun `parse temporizador de 1 hora y 1 ejecuta SetTimer 61`() = runTest {
         coEvery { systemAction.execute(SystemCommand.SetTimer(61)) } returns
             ActionResult.Success("Éxito: Temporizador configurado para 61 minutos.")
 
@@ -1942,7 +2045,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse temporizador de 1 hora y 2 ejecuta SetTimer 62`() {
+    fun `parse temporizador de 1 hora y 2 ejecuta SetTimer 62`() = runTest {
         coEvery { systemAction.execute(SystemCommand.SetTimer(62)) } returns
             ActionResult.Success("Éxito: Temporizador configurado para 62 minutos.")
 
@@ -1953,7 +2056,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse temporizador de 2 minutos y 5 ejecuta SetTimer 7`() {
+    fun `parse temporizador de 2 minutos y 5 ejecuta SetTimer 7`() = runTest {
         coEvery { systemAction.execute(SystemCommand.SetTimer(7)) } returns
             ActionResult.Success("Éxito: Temporizador configurado para 7 minutos.")
 
@@ -1964,7 +2067,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse temporizador de 1 hora y 2 minutos y 5 ejecuta SetTimer 67`() {
+    fun `parse temporizador de 1 hora y 2 minutos y 5 ejecuta SetTimer 67`() = runTest {
         // "2 minutos y 5": el 5 es desnudo (el lookahead bloquea el 2, que sí tiene unidad)
         coEvery { systemAction.execute(SystemCommand.SetTimer(67)) } returns
             ActionResult.Success("Éxito: Temporizador configurado para 67 minutos.")
@@ -1976,7 +2079,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse temporizador de 1 hora y 30 minutos y 5 ejecuta SetTimer 95`() {
+    fun `parse temporizador de 1 hora y 30 minutos y 5 ejecuta SetTimer 95`() = runTest {
         coEvery { systemAction.execute(SystemCommand.SetTimer(95)) } returns
             ActionResult.Success("Éxito: Temporizador configurado para 95 minutos.")
 
@@ -1987,7 +2090,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse temporizador de 1 hora y 60 devuelve null por rango del desnudo`() {
+    fun `parse temporizador de 1 hora y 60 devuelve null por rango del desnudo`() = runTest {
         // El desnudo es SIEMPRE minutos 0..59 (ADR-TMP-5): 60 fuera de rango → Gemini
         val result = parser.parse("pon un temporizador de 1 hora y 60")
 
@@ -1996,7 +2099,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse temporizador de 1 hora y 30 segundos ejecuta SetTimer 60`() {
+    fun `parse temporizador de 1 hora y 30 segundos ejecuta SetTimer 60`() = runTest {
         // El lookahead bloquea el 30 (tiene unidad "segundos") → no doble conteo
         coEvery { systemAction.execute(SystemCommand.SetTimer(60)) } returns
             ActionResult.Success("Éxito: Temporizador configurado para 60 minutos.")
@@ -2008,7 +2111,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse temporizador de 1 hora y 30 y 5 ejecuta SetTimer 90`() {
+    fun `parse temporizador de 1 hora y 30 y 5 ejecuta SetTimer 90`() = runTest {
         // Trailing sin unidad se ignora (ADR-TMP-5): el 5 no suma, el 30 sí
         coEvery { systemAction.execute(SystemCommand.SetTimer(90)) } returns
             ActionResult.Success("Éxito: Temporizador configurado para 90 minutos.")
@@ -2022,7 +2125,7 @@ class SystemCommandParserTest {
     // ===== TMP-num: unidades habladas y fracciones con unidad propia (ADR-TMP-6) =====
 
     @Test
-    fun `parse temporizador de una hora ejecuta SetTimer 60`() {
+    fun `parse temporizador de una hora ejecuta SetTimer 60`() = runTest {
         coEvery { systemAction.execute(SystemCommand.SetTimer(60)) } returns
             ActionResult.Success("Éxito: Temporizador configurado para 60 minutos.")
 
@@ -2033,7 +2136,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse temporizador de una hora y media ejecuta SetTimer 90`() {
+    fun `parse temporizador de una hora y media ejecuta SetTimer 90`() = runTest {
         coEvery { systemAction.execute(SystemCommand.SetTimer(90)) } returns
             ActionResult.Success("Éxito: Temporizador configurado para 90 minutos.")
 
@@ -2044,7 +2147,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse temporizador de dos horas y media ejecuta SetTimer 150`() {
+    fun `parse temporizador de dos horas y media ejecuta SetTimer 150`() = runTest {
         coEvery { systemAction.execute(SystemCommand.SetTimer(150)) } returns
             ActionResult.Success("Éxito: Temporizador configurado para 150 minutos.")
 
@@ -2055,7 +2158,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse temporizador de media hora ejecuta SetTimer 30`() {
+    fun `parse temporizador de media hora ejecuta SetTimer 30`() = runTest {
         coEvery { systemAction.execute(SystemCommand.SetTimer(30)) } returns
             ActionResult.Success("Éxito: Temporizador configurado para 30 minutos.")
 
@@ -2066,7 +2169,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse temporizador de un cuarto de hora ejecuta SetTimer 15`() {
+    fun `parse temporizador de un cuarto de hora ejecuta SetTimer 15`() = runTest {
         coEvery { systemAction.execute(SystemCommand.SetTimer(15)) } returns
             ActionResult.Success("Éxito: Temporizador configurado para 15 minutos.")
 
@@ -2077,7 +2180,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse temporizador de un minuto ejecuta SetTimer 1`() {
+    fun `parse temporizador de un minuto ejecuta SetTimer 1`() = runTest {
         coEvery { systemAction.execute(SystemCommand.SetTimer(1)) } returns
             ActionResult.Success("Éxito: Temporizador configurado para 1 minutos.")
 
@@ -2088,7 +2191,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse temporizador de veinte y cinco minutos ejecuta SetTimer 25`() {
+    fun `parse temporizador de veinte y cinco minutos ejecuta SetTimer 25`() = runTest {
         coEvery { systemAction.execute(SystemCommand.SetTimer(25)) } returns
             ActionResult.Success("Éxito: Temporizador configurado para 25 minutos.")
 
@@ -2099,7 +2202,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse temporizador de cuarenta y cinco segundos ejecuta SetTimer 1`() {
+    fun `parse temporizador de cuarenta y cinco segundos ejecuta SetTimer 1`() = runTest {
         // 45 segundos → 0 minutos + ceil a 1 (solo segundos)
         coEvery { systemAction.execute(SystemCommand.SetTimer(1)) } returns
             ActionResult.Success("Éxito: Temporizador configurado para 1 minutos.")
@@ -2111,7 +2214,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse temporizador de 45 segundos ejecuta SetTimer 1 por el ceil`() {
+    fun `parse temporizador de 45 segundos ejecuta SetTimer 1 por el ceil`() = runTest {
         coEvery { systemAction.execute(SystemCommand.SetTimer(1)) } returns
             ActionResult.Success("Éxito: Temporizador configurado para 1 minutos.")
 
@@ -2122,7 +2225,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse temporizador de tres minutos y medio devuelve null`() {
+    fun `parse temporizador de tres minutos y medio devuelve null`() = runTest {
         // "X minutos y medio" residual (fracción no ligada a horas) → ambiguo → Gemini
         val result = parser.parse("pon un temporizador de tres minutos y medio")
 
@@ -2131,7 +2234,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse temporizador de una hora y treinta minutos ejecuta SetTimer 90`() {
+    fun `parse temporizador de una hora y treinta minutos ejecuta SetTimer 90`() = runTest {
         coEvery { systemAction.execute(SystemCommand.SetTimer(90)) } returns
             ActionResult.Success("Éxito: Temporizador configurado para 90 minutos.")
 
@@ -2142,7 +2245,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse sesenta y cinco minutos devuelve null por no ser comando directo`() {
+    fun `parse sesenta y cinco minutos devuelve null por no ser comando directo`() = runTest {
         // Sin "temporizador" ni "pasa" → no entra en la rama 3 → Gemini
         val result = parser.parse("sesenta y cinco minutos")
 
@@ -2151,7 +2254,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse temporizador de 30 minutos y media hora ejecuta SetTimer 60`() {
+    fun `parse temporizador de 30 minutos y media hora ejecuta SetTimer 60`() = runTest {
         // "media hora" sí está ligada a horas (no es residual)
         coEvery { systemAction.execute(SystemCommand.SetTimer(60)) } returns
             ActionResult.Success("Éxito: Temporizador configurado para 60 minutos.")
@@ -2163,7 +2266,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse temporizador de una hora y media y 5 ejecuta SetTimer 90`() {
+    fun `parse temporizador de una hora y media y 5 ejecuta SetTimer 90`() = runTest {
         // La fracción ligada a horas suma 30; el 5 trailing se ignora
         coEvery { systemAction.execute(SystemCommand.SetTimer(90)) } returns
             ActionResult.Success("Éxito: Temporizador configurado para 90 minutos.")
@@ -2175,7 +2278,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse pasa una hora ejecuta SetTimer 60`() {
+    fun `parse pasa una hora ejecuta SetTimer 60`() = runTest {
         coEvery { systemAction.execute(SystemCommand.SetTimer(60)) } returns
             ActionResult.Success("Éxito: Temporizador configurado para 60 minutos.")
 
@@ -2188,7 +2291,7 @@ class SystemCommandParserTest {
     // ===== B1: rechazo de decenas no soportadas y compuestos inválidos (sin parcial silencioso) =====
 
     @Test
-    fun `parse temporizador de sesenta y cinco minutos devuelve null`() {
+    fun `parse temporizador de sesenta y cinco minutos devuelve null`() = runTest {
         // 65 > 59 con decena no soportada: durationSpokenUnitRegex saltaría la decena y
         // capturaría "cinco minutos" → rechazo completo (B3/ADR-TMP-6)
         val result = parser.parse("pon un temporizador de sesenta y cinco minutos")
@@ -2198,7 +2301,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse temporizador de veinte y diez minutos devuelve null`() {
+    fun `parse temporizador de veinte y diez minutos devuelve null`() = runTest {
         // Compuesto inválido (token2 fuera de 1-9): el match parcial "diez minutos" no vale
         val result = parser.parse("pon un temporizador de veinte y diez minutos")
 
@@ -2207,7 +2310,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse temporizador de una hora y cinco minutos ejecuta SetTimer 65`() {
+    fun `parse temporizador de una hora y cinco minutos ejecuta SetTimer 65`() = runTest {
         // La decena NO precede a "cinco minutos" (va "hora y "): el residual B1 no aplica
         coEvery { systemAction.execute(SystemCommand.SetTimer(65)) } returns
             ActionResult.Success("Éxito: Temporizador configurado para 65 minutos.")
@@ -2221,7 +2324,7 @@ class SystemCommandParserTest {
     // ===== Anti-doble-conteo de fracciones ("1 hora y media hora" → 90, no 120) =====
 
     @Test
-    fun `parse temporizador de 1 hora y media hora ejecuta SetTimer 90`() {
+    fun `parse temporizador de 1 hora y media hora ejecuta SetTimer 90`() = runTest {
         // La fracción compuesta "1 hora y media" NO suma aquí: la suma la hace "media hora"
         coEvery { systemAction.execute(SystemCommand.SetTimer(90)) } returns
             ActionResult.Success("Éxito: Temporizador configurado para 90 minutos.")
@@ -2233,7 +2336,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse temporizador de 1 hora y cuarto de hora ejecuta SetTimer 75`() {
+    fun `parse temporizador de 1 hora y cuarto de hora ejecuta SetTimer 75`() = runTest {
         coEvery { systemAction.execute(SystemCommand.SetTimer(75)) } returns
             ActionResult.Success("Éxito: Temporizador configurado para 75 minutos.")
 
@@ -2246,7 +2349,7 @@ class SystemCommandParserTest {
     // ===== Guard ampliado de la rama 3 (sin duración válida → Gemini) =====
 
     @Test
-    fun `parse temporizador de arena devuelve null por no tener duracion`() {
+    fun `parse temporizador de arena devuelve null por no tener duracion`() = runTest {
         val result = parser.parse("temporizador de arena")
 
         assertNull(result)
@@ -2254,7 +2357,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse quita el temporizador devuelve null`() {
+    fun `parse quita el temporizador devuelve null`() = runTest {
         val result = parser.parse("quita el temporizador")
 
         assertNull(result)
@@ -2262,7 +2365,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse pon un temporizador sin duracion devuelve null`() {
+    fun `parse pon un temporizador sin duracion devuelve null`() = runTest {
         val result = parser.parse("pon un temporizador")
 
         assertNull(result)
@@ -2272,7 +2375,7 @@ class SystemCommandParserTest {
     // ===== M3: fracciones compuestas con findAll (ADR-TMP-1: suma de TODAS) =====
 
     @Test
-    fun `parse temporizador de 1 hora y media y 2 horas y cuarto ejecuta SetTimer 225`() {
+    fun `parse temporizador de 1 hora y media y 2 horas y cuarto ejecuta SetTimer 225`() = runTest {
         // 60 + 120 (unidades) + 30 + 15 (fracciones findAll): ninguna fracción se pierde
         coEvery { systemAction.execute(SystemCommand.SetTimer(225)) } returns
             ActionResult.Success("Éxito: Temporizador configurado para 225 minutos.")
@@ -2287,7 +2390,7 @@ class SystemCommandParserTest {
     // El comando debe parsear igual con espacios delante (" busca gatos" = "busca gatos").
 
     // Helper estilo JUnit4 clásico: verifica el comando esperado y su ejecución con MockK.
-    private fun assertCommandWithLeadingSpace(input: String, expected: SystemCommand) {
+    private suspend fun assertCommandWithLeadingSpace(input: String, expected: SystemCommand) {
         coEvery { systemAction.execute(expected) } returns ActionResult.Success("OK")
         val result = parser.parse(input)
         assertEquals("OK", result)
@@ -2295,22 +2398,22 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse con espacio inicial busca gatos ejecuta SearchGoogle gatos`() {
+    fun `parse con espacio inicial busca gatos ejecuta SearchGoogle gatos`() = runTest {
         assertCommandWithLeadingSpace(" busca gatos", SystemCommand.SearchGoogle("gatos"))
     }
 
     @Test
-    fun `parse con doble espacio inicial busca gatos ejecuta SearchGoogle gatos`() {
+    fun `parse con doble espacio inicial busca gatos ejecuta SearchGoogle gatos`() = runTest {
         assertCommandWithLeadingSpace("  busca gatos", SystemCommand.SearchGoogle("gatos"))
     }
 
     @Test
-    fun `parse con espacio inicial abre whatsapp ejecuta OpenApp whatsapp`() {
+    fun `parse con espacio inicial abre whatsapp ejecuta OpenApp whatsapp`() = runTest {
         assertCommandWithLeadingSpace(" abre whatsapp", SystemCommand.OpenApp("whatsapp"))
     }
 
     @Test
-    fun `parse con espacio inicial repite eso devuelve REPEAT`() {
+    fun `parse con espacio inicial repite eso devuelve REPEAT`() = runTest {
         val result = parser.parse(" repite eso")
 
         assertEquals(CommandMarkers.REPEAT, result)
@@ -2318,52 +2421,52 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse con espacio inicial sube el volumen ejecuta SetVolume UP`() {
+    fun `parse con espacio inicial sube el volumen ejecuta SetVolume UP`() = runTest {
         assertCommandWithLeadingSpace(" sube el volumen", SystemCommand.SetVolume(VolumeAction.UP))
     }
 
     @Test
-    fun `parse con espacio inicial llevame a la oficina ejecuta Navigate la oficina`() {
+    fun `parse con espacio inicial llevame a la oficina ejecuta Navigate la oficina`() = runTest {
         assertCommandWithLeadingSpace(" llevame a la oficina", SystemCommand.Navigate("la oficina"))
     }
 
     @Test
-    fun `parse con espacio inicial recuerda comprar leche ejecuta SaveMemory comprar leche`() {
+    fun `parse con espacio inicial recuerda comprar leche ejecuta SaveMemory comprar leche`() = runTest {
         assertCommandWithLeadingSpace(" recuerda comprar leche", SystemCommand.SaveMemory("comprar leche"))
     }
 
     @Test
-    fun `parse con espacio inicial llama a ana ejecuta Call ana`() {
+    fun `parse con espacio inicial llama a ana ejecuta Call ana`() = runTest {
         assertCommandWithLeadingSpace(" llama a ana", SystemCommand.Call("ana"))
     }
 
     @Test
-    fun `parse con espacio inicial habla en ingles ejecuta SetLanguage ENGLISH`() {
+    fun `parse con espacio inicial habla en ingles ejecuta SetLanguage ENGLISH`() = runTest {
         assertCommandWithLeadingSpace(" habla en ingles", SystemCommand.SetLanguage(AssistantLanguage.ENGLISH))
     }
 
     @Test
-    fun `parse con espacio inicial pasa 2 horas ejecuta SetTimer 120`() {
+    fun `parse con espacio inicial pasa 2 horas ejecuta SetTimer 120`() = runTest {
         assertCommandWithLeadingSpace(" pasa 2 horas", SystemCommand.SetTimer(120))
     }
 
     @Test
-    fun `parse con espacio inicial pon una alarma a las 7 ejecuta SetAlarm 0700`() {
+    fun `parse con espacio inicial pon una alarma a las 7 ejecuta SetAlarm 0700`() = runTest {
         assertCommandWithLeadingSpace(" pon una alarma a las 7", SystemCommand.SetAlarm(7, 0, null))
     }
 
     @Test
-    fun `parse con doble espacio inicial cancela la alarma de las 7 ejecuta CancelAlarm`() {
+    fun `parse con doble espacio inicial cancela la alarma de las 7 ejecuta CancelAlarm`() = runTest {
         assertCommandWithLeadingSpace("  cancela la alarma de las 7", SystemCommand.CancelAlarm(7, 0))
     }
 
     @Test
-    fun `parse con espacio inicial toma nota del pan ejecuta CreateNote pan`() {
+    fun `parse con espacio inicial toma nota del pan ejecuta CreateNote pan`() = runTest {
         assertCommandWithLeadingSpace(" toma nota del pan", SystemCommand.CreateNote("pan"))
     }
 
     @Test
-    fun `parse con espacio inicial que puedes hacer devuelve HELP`() {
+    fun `parse con espacio inicial que puedes hacer devuelve HELP`() = runTest {
         val result = parser.parse(" que puedes hacer")
 
         assertEquals(CommandMarkers.HELP, result)
@@ -2373,29 +2476,29 @@ class SystemCommandParserTest {
     // ===== H3: "busca:"/"repite:" — el ':' como separador de comando (ADR-011) =====
 
     @Test
-    fun `parse busca colon gatos ejecuta SearchGoogle gatos`() {
+    fun `parse busca colon gatos ejecuta SearchGoogle gatos`() = runTest {
         assertCommandWithLeadingSpace("busca: gatos", SystemCommand.SearchGoogle("gatos"))
     }
 
     @Test
-    fun `parse busca colon gatos pegado ejecuta SearchGoogle gatos`() {
+    fun `parse busca colon gatos pegado ejecuta SearchGoogle gatos`() = runTest {
         assertCommandWithLeadingSpace("busca:gatos", SystemCommand.SearchGoogle("gatos"))
     }
 
     @Test
-    fun `parse busca espacio colon espacio gatos ejecuta SearchGoogle gatos`() {
+    fun `parse busca espacio colon espacio gatos ejecuta SearchGoogle gatos`() = runTest {
         // Bug preexistente ("busca : gatos" caía a Gemini): el trimStart(':') lo arregla
         assertCommandWithLeadingSpace("busca : gatos", SystemCommand.SearchGoogle("gatos"))
     }
 
     @Test
-    fun `parse BUSCA colon GATOS ejecuta SearchGoogle GATOS preservando el case`() {
+    fun `parse BUSCA colon GATOS ejecuta SearchGoogle GATOS preservando el case`() = runTest {
         // El guard decide sobre trimmed pero la query se extrae del original: case intacto
         assertCommandWithLeadingSpace("BUSCA: GATOS", SystemCommand.SearchGoogle("GATOS"))
     }
 
     @Test
-    fun `parse repite colon eso devuelve REPEAT`() {
+    fun `parse repite colon eso devuelve REPEAT`() = runTest {
         val result = parser.parse("repite: eso")
 
         assertEquals(CommandMarkers.REPEAT, result)
@@ -2403,7 +2506,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse repite colon 19 colon 45 devuelve REPEAT y no ejecuta SetAlarm`() {
+    fun `parse repite colon 19 colon 45 devuelve REPEAT y no ejecuta SetAlarm`() = runTest {
         // "repite: 19:45" NO es una hora: el ':' tras palabra es separador de comando,
         // solo el dígito-: -dígito de la rama alarma se interpreta como hora (ADR-011)
         val result = parser.parse("repite: 19:45")
@@ -2415,7 +2518,7 @@ class SystemCommandParserTest {
     // ===== H5: "que puedes hacer:" con ':' al final (ADR-011) =====
 
     @Test
-    fun `parse que puedes hacer con colon final devuelve HELP`() {
+    fun `parse que puedes hacer con colon final devuelve HELP`() = runTest {
         val result = parser.parse("que puedes hacer:")
 
         assertEquals(CommandMarkers.HELP, result)
@@ -2423,7 +2526,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse que puedes hacer colon con contenido devuelve HELP`() {
+    fun `parse que puedes hacer colon con contenido devuelve HELP`() = runTest {
         val result = parser.parse("que puedes hacer: x")
 
         assertEquals(CommandMarkers.HELP, result)
@@ -2431,7 +2534,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse piensa que puedes hacer colon nada devuelve HELP aceptando el falso positivo`() {
+    fun `parse piensa que puedes hacer colon nada devuelve HELP aceptando el falso positivo`() = runTest {
         // Falso positivo aceptado y documentado (ADR-011): el límite (?=\s|:|$) matchea
         // el ':' de "hacer:" aunque la frase real no sea una petición de ayuda
         val result = parser.parse("piensa que puedes hacer: nada")
@@ -2443,14 +2546,14 @@ class SystemCommandParserTest {
     // ===== Ronda de cierre: QA + Supervisor =====
 
     @Test
-    fun `parse busca con doble dos puntos y espacios limpia la query`() {
+    fun `parse busca con doble dos puntos y espacios limpia la query`() = runTest {
         // Fija el orden trim → trimStart(':') → trim de la rama 10: "busca: : gatos"
         // matchea "busca:" y el ':' colgante se limpia del argumento
         assertCommandWithLeadingSpace("busca: : gatos", SystemCommand.SearchGoogle("gatos"))
     }
 
     @Test
-    fun `parse busca con dos puntos y hora no confunde la rama de alarma`() {
+    fun `parse busca con dos puntos y hora no confunde la rama de alarma`() = runTest {
         // Lado SearchGoogle de la desambiguación dígito-: vs palabra-: (ADR-011):
         // "busca: 19:45" es un comando de búsqueda, no una hora de la rama alarma.
         // Patrón explícito (no helper): permite verificar que la rama alarma NO se ejecutó.
@@ -2464,7 +2567,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse ayudame sin dos puntos no matchea HELP`() {
+    fun `parse ayudame sin dos puntos no matchea HELP`() = runTest {
         // F2: "ayudame" no es "ayuda" ni "ayuda:" ni HELP_PHRASE — cae a Gemini
         val result = parser.parse("ayudame")
 
@@ -2473,7 +2576,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse ayuda con dos puntos devuelve HELP`() {
+    fun `parse ayuda con dos puntos devuelve HELP`() = runTest {
         // M1: "ayuda:" — palabra-: = separador de comando (consistencia con H3)
         val result = parser.parse("ayuda:")
 
@@ -2482,7 +2585,7 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse comandos con dos puntos devuelve HELP`() {
+    fun `parse comandos con dos puntos devuelve HELP`() = runTest {
         // M1: "comandos:" igual que "ayuda:"
         val result = parser.parse("comandos:")
 
@@ -2491,33 +2594,749 @@ class SystemCommandParserTest {
     }
 
     @Test
-    fun `parse abre whatsapp con signos de apertura y cierre ejecuta OpenApp whatsapp limpio`() {
+    fun `parse abre whatsapp con signos de apertura y cierre ejecuta OpenApp whatsapp limpio`() = runTest {
         // M2: O6 expuso el residuo de puntuación — "¿abre whatsapp?" → OpenApp("whatsapp?")
         // (el '?' final se colaba en el argumento; antes caía a Gemini por el espacio inicial)
         assertCommandWithLeadingSpace("¿abre whatsapp?", SystemCommand.OpenApp("whatsapp"))
     }
 
     @Test
-    fun `parse busca colon gatos con signo de cierre ejecuta SearchGoogle gatos`() {
+    fun `parse busca colon gatos con signo de cierre ejecuta SearchGoogle gatos`() = runTest {
         // M2: solo se limpian los BORDES; la puntuación interior del argumento no se toca
         assertCommandWithLeadingSpace("busca: gatos?", SystemCommand.SearchGoogle("gatos"))
     }
 
     @Test
-    fun `parse con espacio inicial y colon busca gatos ejecuta SearchGoogle gatos`() {
+    fun `parse con espacio inicial y colon busca gatos ejecuta SearchGoogle gatos`() = runTest {
         // M4: caso combinado del backlog — espacio inicial + separador ':' a la vez
         assertCommandWithLeadingSpace(" busca: gatos", SystemCommand.SearchGoogle("gatos"))
     }
 
     @Test
-    fun `parse con espacio inicial llama al 600 ejecuta CallNumber 600`() {
+    fun `parse con espacio inicial llama al 600 ejecuta CallNumber 600`() = runTest {
         // M4: rama 4a con espacio inicial (antes no cubierta en O6)
         assertCommandWithLeadingSpace(" llama al 600", SystemCommand.CallNumber("600"))
     }
 
     @Test
-    fun `parse con espacio inicial abre los ajustes ejecuta OpenSettings`() {
+    fun `parse con espacio inicial abre los ajustes ejecuta OpenSettings`() = runTest {
         // M4: rama 7 con espacio inicial (antes no cubierta en O6)
         assertCommandWithLeadingSpace(" abre los ajustes", SystemCommand.OpenSettings)
+    }
+
+    // ===== O8: análisis visual de pantalla → marcador ANALYZE_SCREEN (rama 2c) =====
+
+    @Test
+    fun `parse analiza mi pantalla devuelve ANALYZE_SCREEN`() = runTest {
+        val result = parser.parse("analiza mi pantalla")
+
+        assertEquals(CommandMarkers.ANALYZE_SCREEN, result)
+        coVerify(exactly = 0) { systemAction.execute(any()) }
+    }
+
+    @Test
+    fun `parse que hay en mi pantalla devuelve ANALYZE_SCREEN`() = runTest {
+        val result = parser.parse("que hay en mi pantalla")
+
+        assertEquals(CommandMarkers.ANALYZE_SCREEN, result)
+        coVerify(exactly = 0) { systemAction.execute(any()) }
+    }
+
+    @Test
+    fun `parse analiza pantalla devuelve ANALYZE_SCREEN`() = runTest {
+        val result = parser.parse("analiza pantalla")
+
+        assertEquals(CommandMarkers.ANALYZE_SCREEN, result)
+        coVerify(exactly = 0) { systemAction.execute(any()) }
+    }
+
+    @Test
+    fun `parse que ves en mi pantalla devuelve ANALYZE_SCREEN`() = runTest {
+        val result = parser.parse("que ves en mi pantalla")
+
+        assertEquals(CommandMarkers.ANALYZE_SCREEN, result)
+        coVerify(exactly = 0) { systemAction.execute(any()) }
+    }
+
+    @Test
+    fun `parse analizar mi pantalla devuelve ANALYZE_SCREEN`() = runTest {
+        val result = parser.parse("analizar mi pantalla")
+
+        assertEquals(CommandMarkers.ANALYZE_SCREEN, result)
+        coVerify(exactly = 0) { systemAction.execute(any()) }
+    }
+
+    @Test
+    fun `parse analizar pantalla devuelve ANALYZE_SCREEN`() = runTest {
+        val result = parser.parse("analizar pantalla")
+
+        assertEquals(CommandMarkers.ANALYZE_SCREEN, result)
+        coVerify(exactly = 0) { systemAction.execute(any()) }
+    }
+
+    @Test
+    fun `parse analiza mi pantalla por favor devuelve ANALYZE_SCREEN`() = runTest {
+        val result = parser.parse("analiza mi pantalla por favor")
+
+        assertEquals(CommandMarkers.ANALYZE_SCREEN, result)
+        coVerify(exactly = 0) { systemAction.execute(any()) }
+    }
+
+    @Test
+    fun `parse analiza mi pantalla no conflicta con otros comandos`() = runTest {
+        val result = parser.parse("analiza mi pantalla")
+
+        assertEquals(CommandMarkers.ANALYZE_SCREEN, result)
+        // No debe ejecutar ninguna acción del sistema
+        coVerify(exactly = 0) { systemAction.execute(any()) }
+        // No debe devolver otros marcadores
+        assertNotEquals(CommandMarkers.HELP, result)
+        assertNotEquals(CommandMarkers.REPEAT, result)
+        assertNotEquals(CommandMarkers.START_MONITORING, result)
+        assertNotEquals(CommandMarkers.STOP_MONITORING, result)
+    }
+
+    // ===== Contrato parseSingleCommand =====
+
+    @Test
+    fun `parseSingleCommand comportamiento identico a parse para 20 inputs representativos`() = runTest {
+        // parse() ejecuta la acción tras parsear (contrato legacy acoplado):
+        // stub genérico para que ninguna llamada al mock reviente sin answer.
+        coEvery { systemAction.execute(any()) } returns ActionResult.Success("OK")
+
+        val testInputs = listOf(
+            "llama a Ana",
+            "llama al 600 123 456",
+            "busca gatos",
+            "pon alarma a las 7:30",
+            "pon alarma a las siete y media",
+            "temporizador de 5 minutos",
+            "pasa 2 horas",
+            "sube el volumen",
+            "baja el volumen",
+            "silencio",
+            "habla en ingles",
+            "cambia a espanol",
+            "abre los ajustes",
+            "abre whatsapp",
+            "llevame a la oficina",
+            "navega a la playa",
+            "recuerda que me gusta el cafe",
+            "crea una nota de comprar pan",
+            "lee mis notas",
+            "lee la nota de compras"
+        )
+
+        for (input in testInputs) {
+            val result1 = parser.parse(input)
+            val result2 = parser.parseSingleCommand(input)
+            assertEquals("parseSingleCommand difiere de parse para: $input", result1, result2)
+        }
+    }
+
+    // ===== Fase 1: Tests para ramas 13-18 =====
+
+    // --- Rama 13: Listar contactos ---
+    @Test
+    fun `lista mis contactos ejecuta ListContacts`() = runTest {
+        coEvery { systemAction.execute(SystemCommand.ListContacts) } returns
+            ActionResult.Success("Tienes 5 contactos: Ana, Pedro")
+
+        val result = parser.parse("lista mis contactos")
+
+        assertEquals("Tienes 5 contactos: Ana, Pedro", result)
+        coVerify { systemAction.execute(SystemCommand.ListContacts) }
+    }
+
+    @Test
+    fun `quienes son mis contactos ejecuta ListContacts`() = runTest {
+        coEvery { systemAction.execute(SystemCommand.ListContacts) } returns
+            ActionResult.Success("Tienes 5 contactos")
+
+        val result = parser.parse("quienes son mis contactos")
+
+        assertEquals("Tienes 5 contactos", result)
+        coVerify { systemAction.execute(SystemCommand.ListContacts) }
+    }
+
+    @Test
+    fun `mostrar contactos ejecuta ListContacts`() = runTest {
+        coEvery { systemAction.execute(SystemCommand.ListContacts) } returns
+            ActionResult.Success("Tienes 5 contactos")
+
+        val result = parser.parse("mostrar contactos")
+
+        assertEquals("Tienes 5 contactos", result)
+        coVerify { systemAction.execute(SystemCommand.ListContacts) }
+    }
+
+    // --- Rama 14: Info WiFi ---
+    @Test
+    fun `que wifi tengo ejecuta GetWifiInfo`() = runTest {
+        coEvery { systemAction.execute(SystemCommand.GetWifiInfo) } returns
+            ActionResult.Success("Red WiFi: MiRed. Señal buena")
+
+        val result = parser.parse("que wifi tengo")
+
+        assertEquals("Red WiFi: MiRed. Señal buena", result)
+        coVerify { systemAction.execute(SystemCommand.GetWifiInfo) }
+    }
+
+    @Test
+    fun `nombre de mi wifi ejecuta GetWifiInfo`() = runTest {
+        coEvery { systemAction.execute(SystemCommand.GetWifiInfo) } returns
+            ActionResult.Success("Red WiFi: MiRed")
+
+        val result = parser.parse("nombre de mi wifi")
+
+        assertEquals("Red WiFi: MiRed", result)
+        coVerify { systemAction.execute(SystemCommand.GetWifiInfo) }
+    }
+
+    @Test
+    fun `cual es mi wifi ejecuta GetWifiInfo`() = runTest {
+        coEvery { systemAction.execute(SystemCommand.GetWifiInfo) } returns
+            ActionResult.Success("Red WiFi: MiRed")
+
+        val result = parser.parse("cual es mi wifi")
+
+        assertEquals("Red WiFi: MiRed", result)
+        coVerify { systemAction.execute(SystemCommand.GetWifiInfo) }
+    }
+
+    @Test
+    fun `cual es mi red wi-fi con guion ejecuta GetWifiInfo`() = runTest {
+        coEvery { systemAction.execute(SystemCommand.GetWifiInfo) } returns
+            ActionResult.Success("Red WiFi: MiRed")
+
+        val result = parser.parse("cual es mi red wi-fi")
+
+        assertEquals("Red WiFi: MiRed", result)
+        coVerify { systemAction.execute(SystemCommand.GetWifiInfo) }
+    }
+
+    // --- Rama 15: Info del dispositivo ---
+    @Test
+    fun `que telefono tengo ejecuta DeviceInfo MODEL`() = runTest {
+        coEvery { systemAction.execute(SystemCommand.DeviceInfo(com.screenassistant.core.domain.model.DeviceInfoType.MODEL)) } returns
+            ActionResult.Success("Tu teléfono es un Samsung Galaxy")
+
+        val result = parser.parse("que telefono tengo")
+
+        assertEquals("Tu teléfono es un Samsung Galaxy", result)
+        coVerify { systemAction.execute(SystemCommand.DeviceInfo(com.screenassistant.core.domain.model.DeviceInfoType.MODEL)) }
+    }
+
+    @Test
+    fun `cuanta bateria queda ejecuta DeviceInfo BATTERY`() = runTest {
+        coEvery { systemAction.execute(SystemCommand.DeviceInfo(com.screenassistant.core.domain.model.DeviceInfoType.BATTERY)) } returns
+            ActionResult.Success("Tu batería está al 50%")
+
+        val result = parser.parse("cuanta bateria queda")
+
+        assertEquals("Tu batería está al 50%", result)
+        coVerify { systemAction.execute(SystemCommand.DeviceInfo(com.screenassistant.core.domain.model.DeviceInfoType.BATTERY)) }
+    }
+
+    @Test
+    fun `cuanto espacio libre ejecuta DeviceInfo STORAGE`() = runTest {
+        coEvery { systemAction.execute(SystemCommand.DeviceInfo(com.screenassistant.core.domain.model.DeviceInfoType.STORAGE)) } returns
+            ActionResult.Success("Tienes 10 GB libres")
+
+        val result = parser.parse("cuanto espacio libre")
+
+        assertEquals("Tienes 10 GB libres", result)
+        coVerify { systemAction.execute(SystemCommand.DeviceInfo(com.screenassistant.core.domain.model.DeviceInfoType.STORAGE)) }
+    }
+
+    // --- Rama 16: Portapapeles ---
+    @Test
+    fun `copia texto ejecuta Clipboard COPY`() = runTest {
+        coEvery { systemAction.execute(SystemCommand.Clipboard(com.screenassistant.core.domain.model.ClipboardOperation.COPY, "hola mundo")) } returns
+            ActionResult.Success("Texto copiado al portapapeles.")
+
+        val result = parser.parse("copia hola mundo")
+
+        assertEquals("Texto copiado al portapapeles.", result)
+        coVerify { systemAction.execute(SystemCommand.Clipboard(com.screenassistant.core.domain.model.ClipboardOperation.COPY, "hola mundo")) }
+    }
+
+    @Test
+    fun `copia sin texto devuelve error`() = runTest {
+        val result = parser.parse("copia")
+
+        assertEquals("Error: ¿Qué quieres que copie?", result)
+    }
+
+    @Test
+    fun `pega ejecuta Clipboard PASTE`() = runTest {
+        coEvery { systemAction.execute(SystemCommand.Clipboard(com.screenassistant.core.domain.model.ClipboardOperation.PASTE, null)) } returns
+            ActionResult.Success("Tengo copiado: hola")
+
+        val result = parser.parse("pega")
+
+        assertEquals("Tengo copiado: hola", result)
+        coVerify { systemAction.execute(SystemCommand.Clipboard(com.screenassistant.core.domain.model.ClipboardOperation.PASTE, null)) }
+    }
+
+    @Test
+    fun `que tengo copiado ejecuta Clipboard SHOW`() = runTest {
+        coEvery { systemAction.execute(SystemCommand.Clipboard(com.screenassistant.core.domain.model.ClipboardOperation.SHOW, null)) } returns
+            ActionResult.Success("En el portapapeles hay: texto")
+
+        val result = parser.parse("que tengo copiado")
+
+        assertEquals("En el portapapeles hay: texto", result)
+        coVerify { systemAction.execute(SystemCommand.Clipboard(com.screenassistant.core.domain.model.ClipboardOperation.SHOW, null)) }
+    }
+
+    // --- Rama 17: Cronómetro ---
+    @Test
+    fun `inicia cronometro ejecuta Stopwatch START`() = runTest {
+        coEvery { systemAction.execute(SystemCommand.Stopwatch(com.screenassistant.core.domain.model.StopwatchAction.START)) } returns
+            ActionResult.Success("Cronómetro iniciado.")
+
+        val result = parser.parse("inicia cronometro")
+
+        assertEquals("Cronómetro iniciado.", result)
+        coVerify { systemAction.execute(SystemCommand.Stopwatch(com.screenassistant.core.domain.model.StopwatchAction.START)) }
+    }
+
+    @Test
+    fun `para cronometro ejecuta Stopwatch STOP`() = runTest {
+        coEvery { systemAction.execute(SystemCommand.Stopwatch(com.screenassistant.core.domain.model.StopwatchAction.STOP)) } returns
+            ActionResult.Success("Cronómetro detenido: 5 segundos.")
+
+        val result = parser.parse("para cronometro")
+
+        assertEquals("Cronómetro detenido: 5 segundos.", result)
+        coVerify { systemAction.execute(SystemCommand.Stopwatch(com.screenassistant.core.domain.model.StopwatchAction.STOP)) }
+    }
+
+    @Test
+    fun `cuanto tiempo lleva ejecuta Stopwatch GET_TIME`() = runTest {
+        coEvery { systemAction.execute(SystemCommand.Stopwatch(com.screenassistant.core.domain.model.StopwatchAction.GET_TIME)) } returns
+            ActionResult.Success("Llevas 3 segundos.")
+
+        val result = parser.parse("cuanto tiempo lleva")
+
+        assertEquals("Llevas 3 segundos.", result)
+        coVerify { systemAction.execute(SystemCommand.Stopwatch(com.screenassistant.core.domain.model.StopwatchAction.GET_TIME)) }
+    }
+
+    @Test
+    fun `cronometro suelto ejecuta GET_TIME`() = runTest {
+        coEvery { systemAction.execute(SystemCommand.Stopwatch(com.screenassistant.core.domain.model.StopwatchAction.GET_TIME)) } returns
+            ActionResult.Success("El cronómetro no está corriendo.")
+
+        val result = parser.parse("cronometro")
+
+        assertEquals("El cronómetro no está corriendo.", result)
+    }
+
+    // --- Rama 18: Calculadora ---
+    @Test
+    fun `cuanto es 5 por 7 ejecuta Calculate`() = runTest {
+        coEvery { systemAction.execute(SystemCommand.Calculate(5.0, com.screenassistant.core.domain.model.CalculatorOperator.MULTIPLY, 7.0)) } returns
+            ActionResult.Success("El resultado es 35.")
+
+        val result = parser.parse("cuanto es 5 por 7")
+
+        assertEquals("El resultado es 35.", result)
+        coVerify { systemAction.execute(SystemCommand.Calculate(5.0, com.screenassistant.core.domain.model.CalculatorOperator.MULTIPLY, 7.0)) }
+    }
+
+    @Test
+    fun `cuanto es 2 + 2 ejecuta Calculate`() = runTest {
+        coEvery { systemAction.execute(SystemCommand.Calculate(2.0, com.screenassistant.core.domain.model.CalculatorOperator.ADD, 2.0)) } returns
+            ActionResult.Success("El resultado es 4.")
+
+        val result = parser.parse("cuanto es 2 + 2")
+
+        assertEquals("El resultado es 4.", result)
+        coVerify { systemAction.execute(SystemCommand.Calculate(2.0, com.screenassistant.core.domain.model.CalculatorOperator.ADD, 2.0)) }
+    }
+
+    @Test
+    fun `suma 3 y 4 ejecuta Calculate ADD`() = runTest {
+        coEvery { systemAction.execute(SystemCommand.Calculate(3.0, com.screenassistant.core.domain.model.CalculatorOperator.ADD, 4.0)) } returns
+            ActionResult.Success("El resultado es 7.")
+
+        val result = parser.parse("suma 3 y 4")
+
+        assertEquals("El resultado es 7.", result)
+        coVerify { systemAction.execute(SystemCommand.Calculate(3.0, com.screenassistant.core.domain.model.CalculatorOperator.ADD, 4.0)) }
+    }
+
+    @Test
+    fun `resta 5 de 10 ejecuta Calculate SUBTRACT invertido`() = runTest {
+        coEvery { systemAction.execute(SystemCommand.Calculate(10.0, com.screenassistant.core.domain.model.CalculatorOperator.SUBTRACT, 5.0)) } returns
+            ActionResult.Success("El resultado es 5.")
+
+        val result = parser.parse("resta 5 de 10")
+
+        assertEquals("El resultado es 5.", result)
+        coVerify { systemAction.execute(SystemCommand.Calculate(10.0, com.screenassistant.core.domain.model.CalculatorOperator.SUBTRACT, 5.0)) }
+    }
+
+    @Test
+    fun `divide 10 entre 2 ejecuta Calculate DIVIDE`() = runTest {
+        coEvery { systemAction.execute(SystemCommand.Calculate(10.0, com.screenassistant.core.domain.model.CalculatorOperator.DIVIDE, 2.0)) } returns
+            ActionResult.Success("El resultado es 5.")
+
+        val result = parser.parse("divide 10 entre 2")
+
+        assertEquals("El resultado es 5.", result)
+        coVerify { systemAction.execute(SystemCommand.Calculate(10.0, com.screenassistant.core.domain.model.CalculatorOperator.DIVIDE, 2.0)) }
+    }
+
+    @Test
+    fun `cuanto es 2 mas 2 ejecuta Calculate ADD`() = runTest {
+        coEvery { systemAction.execute(SystemCommand.Calculate(2.0, com.screenassistant.core.domain.model.CalculatorOperator.ADD, 2.0)) } returns
+            ActionResult.Success("El resultado es 4.")
+
+        val result = parser.parse("cuanto es 2 mas 2")
+
+        assertEquals("El resultado es 4.", result)
+        coVerify { systemAction.execute(SystemCommand.Calculate(2.0, com.screenassistant.core.domain.model.CalculatorOperator.ADD, 2.0)) }
+    }
+
+    @Test
+    fun `cuanto es 5 menos 3 ejecuta Calculate SUBTRACT`() = runTest {
+        coEvery { systemAction.execute(SystemCommand.Calculate(5.0, com.screenassistant.core.domain.model.CalculatorOperator.SUBTRACT, 3.0)) } returns
+            ActionResult.Success("El resultado es 2.")
+
+        val result = parser.parse("cuanto es 5 menos 3")
+
+        assertEquals("El resultado es 2.", result)
+        coVerify { systemAction.execute(SystemCommand.Calculate(5.0, com.screenassistant.core.domain.model.CalculatorOperator.SUBTRACT, 3.0)) }
+    }
+
+    @Test
+    fun `cuanto son 2 mas 2 ejecuta Calculate ADD`() = runTest {
+        coEvery { systemAction.execute(SystemCommand.Calculate(2.0, com.screenassistant.core.domain.model.CalculatorOperator.ADD, 2.0)) } returns
+            ActionResult.Success("El resultado es 4.")
+
+        val result = parser.parse("cuanto son 2 mas 2")
+
+        assertEquals("El resultado es 4.", result)
+        coVerify { systemAction.execute(SystemCommand.Calculate(2.0, com.screenassistant.core.domain.model.CalculatorOperator.ADD, 2.0)) }
+    }
+
+    @Test
+    fun `cuantos son 5 menos 3 ejecuta Calculate SUBTRACT`() = runTest {
+        coEvery { systemAction.execute(SystemCommand.Calculate(5.0, com.screenassistant.core.domain.model.CalculatorOperator.SUBTRACT, 3.0)) } returns
+            ActionResult.Success("El resultado es 2.")
+
+        val result = parser.parse("cuantos son 5 menos 3")
+
+        assertEquals("El resultado es 2.", result)
+        coVerify { systemAction.execute(SystemCommand.Calculate(5.0, com.screenassistant.core.domain.model.CalculatorOperator.SUBTRACT, 3.0)) }
+    }
+
+    @Test
+    fun `cuanto es 10 mas 5 con tilde ejecuta Calculate ADD`() = runTest {
+        coEvery { systemAction.execute(SystemCommand.Calculate(10.0, com.screenassistant.core.domain.model.CalculatorOperator.ADD, 5.0)) } returns
+            ActionResult.Success("El resultado es 15.")
+
+        val result = parser.parse("cuanto es 10 más 5")
+
+        assertEquals("El resultado es 15.", result)
+        coVerify { systemAction.execute(SystemCommand.Calculate(10.0, com.screenassistant.core.domain.model.CalculatorOperator.ADD, 5.0)) }
+    }
+
+    @Test
+    fun `cuanto es mas sin operandos devuelve null`() = runTest {
+        val result = parser.parse("cuanto es mas")
+
+        assertNull(result)
+    }
+
+    @Test
+    fun `cuanto es sin operador valido devuelve null`() = runTest {
+        val result = parser.parse("cuanto es")
+        assertNull(result)
+    }
+
+    // --- Precedencia: device info antes de calculator ---
+    @Test
+    fun `cuanto espacio libre no se confunde con calculadora`() = runTest {
+        coEvery { systemAction.execute(SystemCommand.DeviceInfo(com.screenassistant.core.domain.model.DeviceInfoType.STORAGE)) } returns
+            ActionResult.Success("Tienes 10 GB libres")
+
+        val result = parser.parse("cuanto espacio libre")
+
+        assertEquals("Tienes 10 GB libres", result)
+        coVerify { systemAction.execute(SystemCommand.DeviceInfo(com.screenassistant.core.domain.model.DeviceInfoType.STORAGE)) }
+    }
+
+    @Test
+    fun `cuanta bateria queda no se confunde con calculadora`() = runTest {
+        coEvery { systemAction.execute(SystemCommand.DeviceInfo(com.screenassistant.core.domain.model.DeviceInfoType.BATTERY)) } returns
+            ActionResult.Success("Tu batería está al 80%")
+
+        val result = parser.parse("cuanta bateria queda")
+
+        assertEquals("Tu batería está al 80%", result)
+        coVerify { systemAction.execute(SystemCommand.DeviceInfo(com.screenassistant.core.domain.model.DeviceInfoType.BATTERY)) }
+    }
+
+    // ===== Fase 2: Tests para ramas 19-25 =====
+
+    // --- Rama 19: Bluetooth ---
+    @Test
+    fun `activa el bluetooth ejecuta SetBluetooth true`() = runTest {
+        coEvery { systemAction.execute(SystemCommand.SetBluetooth(true)) } returns
+            ActionResult.Success("Abriendo ajustes de Bluetooth para activarlo.")
+
+        val result = parser.parse("activa el bluetooth")
+
+        assertEquals("Abriendo ajustes de Bluetooth para activarlo.", result)
+        coVerify { systemAction.execute(SystemCommand.SetBluetooth(true)) }
+    }
+
+    @Test
+    fun `apaga el bluetooth ejecuta SetBluetooth false`() = runTest {
+        coEvery { systemAction.execute(SystemCommand.SetBluetooth(false)) } returns
+            ActionResult.Success("Bluetooth desactivado.")
+
+        val result = parser.parse("apaga el bluetooth")
+
+        assertEquals("Bluetooth desactivado.", result)
+        coVerify { systemAction.execute(SystemCommand.SetBluetooth(false)) }
+    }
+
+    // --- Rama 20: Brillo ---
+    @Test
+    fun `pon el brillo al 128 ejecuta SetBrightness 128`() = runTest {
+        coEvery { systemAction.execute(SystemCommand.SetBrightness(128)) } returns
+            ActionResult.Success("Brillo ajustado al 50%.")
+
+        val result = parser.parse("pon el brillo al 128")
+
+        assertEquals("Brillo ajustado al 50%.", result)
+        coVerify { systemAction.execute(SystemCommand.SetBrightness(128)) }
+    }
+
+    @Test
+    fun `sube el brillo ejecuta SetBrightness -1`() = runTest {
+        coEvery { systemAction.execute(SystemCommand.SetBrightness(-1)) } returns
+            ActionResult.Success("Brillo subido al 60%.")
+
+        val result = parser.parse("sube el brillo")
+
+        assertEquals("Brillo subido al 60%.", result)
+        coVerify { systemAction.execute(SystemCommand.SetBrightness(-1)) }
+    }
+
+    @Test
+    fun `baja el brillo ejecuta SetBrightness -2`() = runTest {
+        coEvery { systemAction.execute(SystemCommand.SetBrightness(-2)) } returns
+            ActionResult.Success("Brillo bajado al 40%.")
+
+        val result = parser.parse("baja el brillo")
+
+        assertEquals("Brillo bajado al 40%.", result)
+        coVerify { systemAction.execute(SystemCommand.SetBrightness(-2)) }
+    }
+
+    @Test
+    fun `brillo con valor invalido devuelve error`() = runTest {
+        val result = parser.parse("pon el brillo al abc")
+
+        assertEquals("Error: El brillo debe ser un número entre 0 y 255.", result)
+    }
+
+    // --- Rama 21: Linterna ---
+    @Test
+    fun `enciende la linterna ejecuta SetFlashlight true`() = runTest {
+        coEvery { systemAction.execute(SystemCommand.SetFlashlight(true)) } returns
+            ActionResult.Success("Linterna encendida.")
+
+        val result = parser.parse("enciende la linterna")
+
+        assertEquals("Linterna encendida.", result)
+        coVerify { systemAction.execute(SystemCommand.SetFlashlight(true)) }
+    }
+
+    @Test
+    fun `apaga la linterna ejecuta SetFlashlight false`() = runTest {
+        coEvery { systemAction.execute(SystemCommand.SetFlashlight(false)) } returns
+            ActionResult.Success("Linterna apagada.")
+
+        val result = parser.parse("apaga la linterna")
+
+        assertEquals("Linterna apagada.", result)
+        coVerify { systemAction.execute(SystemCommand.SetFlashlight(false)) }
+    }
+
+    @Test
+    fun `linterna suelto ejecuta SetFlashlight true`() = runTest {
+        coEvery { systemAction.execute(SystemCommand.SetFlashlight(true)) } returns
+            ActionResult.Success("Linterna encendida.")
+
+        val result = parser.parse("linterna")
+
+        assertEquals("Linterna encendida.", result)
+    }
+
+    // --- Rama 22: Modo avión ---
+    @Test
+    fun `activa el modo avion ejecuta SetAirplaneMode true`() = runTest {
+        coEvery { systemAction.execute(SystemCommand.SetAirplaneMode(true)) } returns
+            ActionResult.Success("Abriendo ajustes del modo avión para activarlo.")
+
+        val result = parser.parse("activa el modo avion")
+
+        assertEquals("Abriendo ajustes del modo avión para activarlo.", result)
+        coVerify { systemAction.execute(SystemCommand.SetAirplaneMode(true)) }
+    }
+
+    @Test
+    fun `desactiva el modo avion ejecuta SetAirplaneMode false`() = runTest {
+        coEvery { systemAction.execute(SystemCommand.SetAirplaneMode(false)) } returns
+            ActionResult.Success("Abriendo ajustes del modo avión para desactivarlo.")
+
+        val result = parser.parse("desactiva el modo avion")
+
+        assertEquals("Abriendo ajustes del modo avión para desactivarlo.", result)
+        coVerify { systemAction.execute(SystemCommand.SetAirplaneMode(false)) }
+    }
+
+    // --- Rama 23: Datos móviles ---
+    @Test
+    fun `activa los datos moviles ejecuta SetMobileData true`() = runTest {
+        coEvery { systemAction.execute(SystemCommand.SetMobileData(true)) } returns
+            ActionResult.Success("Abriendo ajustes de datos móviles para activarlos.")
+
+        val result = parser.parse("activa los datos moviles")
+
+        assertEquals("Abriendo ajustes de datos móviles para activarlos.", result)
+        coVerify { systemAction.execute(SystemCommand.SetMobileData(true)) }
+    }
+
+    @Test
+    fun `desactiva los datos moviles ejecuta SetMobileData false`() = runTest {
+        coEvery { systemAction.execute(SystemCommand.SetMobileData(false)) } returns
+            ActionResult.Success("Abriendo ajustes de datos móviles para desactivarlos.")
+
+        val result = parser.parse("desactiva los datos moviles")
+
+        assertEquals("Abriendo ajustes de datos móviles para desactivarlos.", result)
+        coVerify { systemAction.execute(SystemCommand.SetMobileData(false)) }
+    }
+
+    // --- Rama 24: Abrir archivo ---
+    @Test
+    fun `abre el archivo foto ejecuta OpenFile`() = runTest {
+        coEvery { systemAction.execute(SystemCommand.OpenFile("foto")) } returns
+            ActionResult.Success("Abriendo archivo: foto.jpg")
+
+        val result = parser.parse("abre el archivo foto")
+
+        assertEquals("Abriendo archivo: foto.jpg", result)
+        coVerify { systemAction.execute(SystemCommand.OpenFile("foto")) }
+    }
+
+    // --- Rama 25: Historial de llamadas ---
+    @Test
+    fun `historial de llamadas ejecuta CallHistory`() = runTest {
+        coEvery { systemAction.execute(SystemCommand.CallHistory) } returns
+            ActionResult.Success("Últimas llamadas:\nRecibida: Ana")
+
+        val result = parser.parse("historial de llamadas")
+
+        assertEquals("Últimas llamadas:\nRecibida: Ana", result)
+        coVerify { systemAction.execute(SystemCommand.CallHistory) }
+    }
+
+    @Test
+    fun `llamadas recientes ejecuta CallHistory`() = runTest {
+        coEvery { systemAction.execute(SystemCommand.CallHistory) } returns
+            ActionResult.Success("No hay llamadas recientes.")
+
+        val result = parser.parse("llamadas recientes")
+
+        assertEquals("No hay llamadas recientes.", result)
+        coVerify { systemAction.execute(SystemCommand.CallHistory) }
+    }
+
+    // ===== Fase 4: Hardware directo — Vibración, Ubicación, WiFi, Cámara =====
+
+    @Test
+    fun `parse vibra ejecuta Vibrate con duracion por defecto 500`() = runTest {
+        coEvery { systemAction.execute(SystemCommand.Vibrate(500)) } returns
+            ActionResult.Success("Vibrando durante 0.5 segundos.")
+
+        val result = parser.parse("vibra")
+
+        assertEquals("Vibrando durante 0.5 segundos.", result)
+        coVerify { systemAction.execute(SystemCommand.Vibrate(500)) }
+    }
+
+    @Test
+    fun `parse vibra 2 segundos ejecuta Vibrate 2000`() = runTest {
+        coEvery { systemAction.execute(SystemCommand.Vibrate(2000)) } returns
+            ActionResult.Success("Vibrando durante 2.0 segundos.")
+
+        val result = parser.parse("vibra 2 segundos")
+
+        assertEquals("Vibrando durante 2.0 segundos.", result)
+        coVerify { systemAction.execute(SystemCommand.Vibrate(2000)) }
+    }
+
+    @Test
+    fun `parse donde estoy ejecuta GetLocation`() = runTest {
+        coEvery { systemAction.execute(SystemCommand.GetLocation) } returns
+            ActionResult.Success("Ubicación: 40.4168, -3.7038.")
+
+        val result = parser.parse("donde estoy")
+
+        assertEquals("Ubicación: 40.4168, -3.7038.", result)
+        coVerify { systemAction.execute(SystemCommand.GetLocation) }
+    }
+
+    @Test
+    fun `parse enciende el wifi ejecuta SetWifi true`() = runTest {
+        coEvery { systemAction.execute(SystemCommand.SetWifi(true)) } returns
+            ActionResult.Success("WiFi encendido.")
+
+        val result = parser.parse("enciende el wifi")
+
+        assertEquals("WiFi encendido.", result)
+        coVerify { systemAction.execute(SystemCommand.SetWifi(true)) }
+    }
+
+    @Test
+    fun `parse apaga el wifi ejecuta SetWifi false`() = runTest {
+        coEvery { systemAction.execute(SystemCommand.SetWifi(false)) } returns
+            ActionResult.Success("WiFi apagado.")
+
+        val result = parser.parse("apaga el wifi")
+
+        assertEquals("WiFi apagado.", result)
+        coVerify { systemAction.execute(SystemCommand.SetWifi(false)) }
+    }
+
+    @Test
+    fun `parse saca una foto ejecuta TakePhoto con camara trasera`() = runTest {
+        coEvery { systemAction.execute(SystemCommand.TakePhoto(false)) } returns
+            ActionResult.Success("Abriendo cámara trasera para tomar una foto.")
+
+        val result = parser.parse("saca una foto")
+
+        assertEquals("Abriendo cámara trasera para tomar una foto.", result)
+        coVerify { systemAction.execute(SystemCommand.TakePhoto(false)) }
+    }
+
+    @Test
+    fun `parse selfie ejecuta TakePhoto con camara frontal`() = runTest {
+        coEvery { systemAction.execute(SystemCommand.TakePhoto(true)) } returns
+            ActionResult.Success("Abriendo cámara frontal para tomar una foto.")
+
+        val result = parser.parse("selfie")
+
+        assertEquals("Abriendo cámara frontal para tomar una foto.", result)
+        coVerify { systemAction.execute(SystemCommand.TakePhoto(true)) }
     }
 }

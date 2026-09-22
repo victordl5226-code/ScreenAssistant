@@ -38,11 +38,41 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         buildConfigField("String", "GEMINI_API_KEY", geminiApiKey)
+
+        // OPT-impl-2 (ADR-027 Fase 1 paso 1.4): resConfigs aquí en defaultConfig y
+        // NO en el bloque release — DESVIACIÓN DOCUMENTADA de la tarea: la API de
+        // AGP 8.7.3 no lo permite en buildTypes. Verificado con javap sobre el jar
+        // exacto (gradle-api-8.7.3.jar): ApplicationBuildType ← BuildType ←
+        // VariantDimension NO exponen resConfigs/resourceConfigurations (solo
+        // BaseFlavor/DefaultConfig: resConfigs(String...)). Ponerlo en release no
+        // compila ("Unresolved reference"). Efecto idéntico al buscado: solo se
+        // conservan recursos default + es + en (sin values-es/values-en en src, el
+        // default en español es el fallback; se podan traducciones de MLKit/Media3
+        // /Compose en otros idiomas). En debug el efecto es inocuo.
+        resConfigs("es", "en")
+
+        // OPT-fix1: SIN ndk.abiFilters a nivel app — AGP prohíbe combinarlo
+        // con splits.abi (los splits ya filtran el empaquetado por APK).
+        // core:ai:local conserva sus propios filtros para lo que compila con CMake.
+    }
+
+    // OPT-3 ciclo 1 (ADR-027 Fase 1 paso 1.1): un APK por ABI.
+    // AGP 8.7.3 Kotlin DSL: isEnable/isUniversalApk (nombres correctos).
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a", "x86_64")
+            isUniversalApk = false
+        }
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // OPT-impl-2 (ADR-027 Fase 1 pasos 1.3+1.4): R8 + shrink SOLO release.
+            // Debug intacto (sin minify) para no ralentizar iteración.
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -51,12 +81,8 @@ android {
     }
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
-    }
-
-    kotlinOptions {
-        jvmTarget = "11"
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
 
     buildFeatures {
@@ -69,6 +95,26 @@ android {
         debug {
             enableUnitTestCoverage = true
         }
+    }
+
+    packaging {
+        jniLibs {
+            // J.A.R.V.I.S. v3.8: Alineación de 16KB para Android 16
+            // useLegacyPackaging = false fuerza el uso de librerías sin comprimir y alineadas
+            useLegacyPackaging = false
+            // pickFirsts para evitar colisiones de libc++_shared
+            pickFirsts += listOf("lib/**/libc++_shared.so")
+        }
+        resources {
+            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        }
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+        freeCompilerArgs.add("-opt-in=kotlin.RequiresOptIn")
     }
 }
 
@@ -96,13 +142,13 @@ private val jacocoClassFilter = listOf(
     "**/*_GeneratedInjector.class"
 )
 
-private fun jacocoClassTree(): FileTree = fileTree("$buildDir/tmp/kotlin-classes/debug") {
+private fun jacocoClassTree(): FileTree = fileTree(project.layout.buildDirectory.dir("tmp/kotlin-classes/debug").get().asFile) {
     exclude(jacocoClassFilter)
 }
 
 private fun jacocoSources(): FileCollection = files("src/main/java", "src/main/kotlin")
 
-private fun jacocoExec(): FileTree = fileTree("$buildDir/outputs/unit_test_code_coverage/debugUnitTest") {
+private fun jacocoExec(): FileTree = fileTree(project.layout.buildDirectory.dir("outputs/unit_test_code_coverage/debugUnitTest").get().asFile) {
     include("*.exec")
 }
 
@@ -133,7 +179,12 @@ dependencies {
     implementation(project(":core:domain"))
     implementation(project(":core:data"))
     implementation(project(":core:ui"))
+    implementation(project(":core:nlp"))
+    implementation(project(":core:ai:memory"))
+    implementation(project(":core:ai:local"))
     implementation(project(":feature:overlay"))
+    implementation(project(":feature:iot"))
+    implementation(project(":core:iot:data"))
     implementation(project(":service:system"))
 
     // Core
@@ -159,6 +210,8 @@ dependencies {
     implementation("com.google.dagger:hilt-android:2.53.1")
     ksp("com.google.dagger:hilt-android-compiler:2.53.1")
     implementation("androidx.hilt:hilt-navigation-compose:1.2.0")
+    implementation("androidx.hilt:hilt-work:1.2.0")
+    ksp("androidx.hilt:hilt-compiler:1.2.0")
 
     // Room (needed by AppModule for Room.databaseBuilder) — M24: version catalog
     implementation(libs.room.runtime)

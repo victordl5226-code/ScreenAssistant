@@ -8,6 +8,8 @@
     <string name="overlay_send">Enviar</string>
     <string name="overlay_change_outfit">Cambiar atuendo</string>
     <string name="overlay_help_title">Puedo hacer esto:</string>
+    <string name="overlay_help_close">Cerrar ayuda</string>
+    <string name="overlay_loading">Cargando…</string>
     <string name="overlay_help_command_bullet">• %1$s</string>
 
     <!-- Tarjeta de ayuda: ejemplos de comandos por voz -->
@@ -25,11 +27,17 @@
     <string name="overlay_command_navigate">Llévame a la oficina</string>
     <string name="overlay_command_language">Habla en inglés</string>
     <string name="overlay_command_remember">Recuerda que me gusta el café</string>
+    <string name="overlay_command_analyze_screen">Analiza lo que hay en mi pantalla</string>
     <string name="overlay_command_repeat">Repite</string>
+    <string name="overlay_command_start_monitoring">Activar monitoreo</string>
+    <string name="overlay_command_stop_monitoring">Detener monitoreo</string>
 
     <!-- D1 (Lote 9): notificación del servicio de overlay — MOVIDAS desde
          service:system (el servicio vive ahora en feature:overlay; sin esto el
          R.string del módulo propio no compilaría). Se mantiene el texto actual. -->
+    <string name="overlay_monitoring">Monitoreo de pantalla</string>
+    <string name="overlay_monitoring_label">Monitorizando…</string>
+
     <string name="service_channel_name">Assistant Overlay</string>
     <string name="service_channel_description">Mantiene el asistente flotante activo</string>
     <string name="service_notification_title">Screen Assistant</string>
